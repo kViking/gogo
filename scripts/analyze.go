@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"regexp"
 	"strings"
 
 	"github.com/fatih/color"
@@ -32,9 +31,9 @@ func Analyze(command ...string) error {
 		cmdStr = strings.TrimSpace(input)
 	}
 
-	// Prepare PowerShell command to tokenize and output as JSON
-	psScript := fmt.Sprintf(`$input = '%s'; [System.Management.Automation.PSParser]::Tokenize($input, [ref]$null) | Select-Object Content,Type | ConvertTo-Json`, strings.ReplaceAll(cmdStr, "'", "''"))
-	fmt.Println("[DEBUG] PowerShell command to tokenize:", psScript)
+	// Use PowerShell AST to get parameter-value pairs
+	psScript := fmt.Sprintf(`$ast = [System.Management.Automation.Language.Parser]::ParseInput('%s', [ref]$null, [ref]$null); $ast.FindAll({$args[0] -is [System.Management.Automation.Language.CommandAst]}, $true) | ForEach-Object { $_.CommandElements | ForEach-Object { [PSCustomObject]@{ Type = $_.GetType().Name; Text = $_.ToString() } } } | ConvertTo-Json`, strings.ReplaceAll(cmdStr, "'", "''"))
+	fmt.Println("[DEBUG] PowerShell AST command to analyze:", psScript)
 	cmd := exec.Command("pwsh", "-NoProfile", "-Command", psScript)
 
 	var out bytes.Buffer
@@ -45,36 +44,47 @@ func Analyze(command ...string) error {
 		return fmt.Errorf("failed to run PowerShell: %w", err)
 	}
 
-	fmt.Println("[DEBUG] Raw PowerShell output:", out.String())
+	fmt.Println("[DEBUG] Raw PowerShell AST output:", out.String())
 
-	var tokens []PSToken
-	if err := json.Unmarshal(out.Bytes(), &tokens); err != nil {
+	var astTokens []struct {
+		Type string `json:"Type"`
+		Text string `json:"Text"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &astTokens); err != nil {
 		fmt.Println("[DEBUG] JSON unmarshal error:", err)
-		return fmt.Errorf("failed to parse PowerShell output: %w", err)
+		return fmt.Errorf("failed to parse PowerShell AST output: %w", err)
 	}
 
-	fmt.Printf("[DEBUG] Parsed tokens: %+v\n", tokens)
+	fmt.Printf("[DEBUG] Parsed AST tokens: %+v\n", astTokens)
 
-	// Highlight likely user-input tokens and describe them
+	// Highlight parameter-value pairs
 	var highlighted []string
 	var descriptions []string
 	highlightColor := color.New(color.FgHiYellow, color.Bold).SprintFunc()
 	descColor := color.New(color.FgCyan).SprintFunc()
-	// For unique variable names
 	varCounters := map[string]int{"string": 0, "number": 0, "path": 0}
-	for _, t := range tokens {
-		contentStr := fmt.Sprintf("%v", t.Content)
-		typeStr := psTokenTypeToString(t.Type)
-		fmt.Printf("[DEBUG] Token: Type=%s, Content=%v\n", typeStr, t.Content)
-		var varName string
-		switch typeStr {
-		case "String":
-			if isLikelyPath(contentStr) {
+	for i := 0; i < len(astTokens); i++ {
+		t := astTokens[i]
+		// Only consider parameter-value pairs
+		if t.Type == "CommandParameterAst" && i+1 < len(astTokens) {
+			param := t.Text
+			val := astTokens[i+1]
+			var varName string
+			// Heuristics for common PowerShell parameter names
+			paramLower := strings.ToLower(strings.TrimLeft(param, "-"))
+			if strings.Contains(paramLower, "path") || strings.Contains(paramLower, "file") || strings.Contains(paramLower, "dir") || isLikelyPath(val.Text) {
 				varCounters["path"]++
 				if varCounters["path"] == 1 {
 					varName = "path"
 				} else {
 					varName = fmt.Sprintf("path%d", varCounters["path"])
+				}
+			} else if strings.Contains(paramLower, "count") || strings.Contains(paramLower, "size") || strings.Contains(paramLower, "length") || strings.Contains(paramLower, "number") || isNumeric(val.Text) {
+				varCounters["number"]++
+				if varCounters["number"] == 1 {
+					varName = "integer"
+				} else {
+					varName = fmt.Sprintf("integer%d", varCounters["number"])
 				}
 			} else {
 				varCounters["string"]++
@@ -84,19 +94,14 @@ func Analyze(command ...string) error {
 					varName = fmt.Sprintf("string%d", varCounters["string"])
 				}
 			}
-			highlighted = append(highlighted, highlightColor("{{"+varName+"}}"))
-			descriptions = append(descriptions, fmt.Sprintf("%s %s", highlightColor(varName), descColor(fmt.Sprintf("\u2190 was '%s', likely a string value (%s)", contentStr, guessStringPurpose(contentStr)))))
-		case "Number":
-			varCounters["number"]++
-			if varCounters["number"] == 1 {
-				varName = "integer"
-			} else {
-				varName = fmt.Sprintf("integer%d", varCounters["number"])
+			highlighted = append(highlighted, param+" "+highlightColor("{{"+varName+"}}"))
+			descriptions = append(descriptions, fmt.Sprintf("%s %s", highlightColor(varName), descColor(fmt.Sprintf("\u2190 was '%s', value for %s", val.Text, param))))
+			i++ // skip value
+		} else {
+			// Only show non-parameter tokens that are not just punctuation
+			if t.Type != "StringConstantExpressionAst" && t.Type != "CommandAst" && t.Type != "PipelineAst" && t.Type != "ScriptBlockAst" && t.Type != "StatementBlockAst" && t.Type != "CommandExpressionAst" {
+				highlighted = append(highlighted, t.Text)
 			}
-			highlighted = append(highlighted, highlightColor("{{"+varName+"}}"))
-			descriptions = append(descriptions, fmt.Sprintf("%s %s", highlightColor(varName), descColor(fmt.Sprintf("\u2190 was '%s', likely a numeric value", contentStr))))
-		default:
-			highlighted = append(highlighted, contentStr)
 		}
 	}
 
@@ -112,88 +117,15 @@ func Analyze(command ...string) error {
 	return nil
 }
 
-// psTokenTypeToString converts a PowerShell token type to its string representation.
-func psTokenTypeToString(t interface{}) string {
-	switch v := t.(type) {
-	case string:
-		return v
-	case float64:
-		switch int(v) {
-		case 0:
-			return "None"
-		case 1:
-			return "Command"
-		case 2:
-			return "CommandArgument"
-		case 3:
-			return "String"
-		case 4:
-			return "Number"
-		case 5:
-			return "Variable"
-		case 6:
-			return "Parameter"
-		case 7:
-			return "StringExpandable"
-		case 8:
-			return "Operator"
-		case 9:
-			return "GroupStart"
-		case 10:
-			return "GroupEnd"
-		case 11:
-			return "Keyword"
-		case 12:
-			return "Comment"
-		case 13:
-			return "StatementSeparator"
-		case 14:
-			return "NewLine"
-		case 15:
-			return "LineContinuation"
-		case 16:
-			return "Position"
-		default:
-			return fmt.Sprintf("Unknown(%v)", v)
-		}
-	default:
-		return fmt.Sprintf("Unknown(%v)", v)
-	}
-}
-
-// guessStringPurpose tries to guess what a string is used for.
-func guessStringPurpose(s string) string {
-	// Simple heuristics
-	if isLikelyPath(s) {
-		return "file or folder path"
-	}
-	if isLikelyEncoding(s) {
-		return "encoding type"
-	}
-	if isLikelyGuid(s) {
-		return "GUID"
-	}
-	return "text or parameter"
+// Helper to check if a string is numeric
+func isNumeric(s string) bool {
+	_, err := fmt.Sscanf(s, "%f", new(float64))
+	return err == nil
 }
 
 func isLikelyPath(s string) bool {
 	// Windows or Unix path
 	return strings.Contains(s, `\`) || strings.Contains(s, `/`)
-}
-
-func isLikelyEncoding(s string) bool {
-	encodings := []string{"UTF8", "ASCII", "Unicode", "UTF7", "UTF32", "BigEndianUnicode", "Default", "OEM"}
-	for _, e := range encodings {
-		if strings.EqualFold(s, e) {
-			return true
-		}
-	}
-	return false
-}
-
-func isLikelyGuid(s string) bool {
-	guidRegex := regexp.MustCompile(`^[{(]?[0-9A-Fa-f]{8}(-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}[)}]?$`)
-	return guidRegex.MatchString(s)
 }
 
 // NewAnalyzeCommand creates a new Cobra command for analyze.
