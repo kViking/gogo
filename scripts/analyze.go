@@ -90,18 +90,36 @@ func Analyze(command ...string) error {
 		if t.Type == "CommandAst" {
 			continue
 		}
-		if t.Type == "StringConstantExpressionAst" && (i == 0 || astTokens[i-1].Type != "CommandParameterAst") {
-			// Standalone string (likely a positional argument)
-			varCounters["string"]++
-			var varName string
-			if varCounters["string"] == 1 {
-				varName = "string"
-			} else {
-				varName = fmt.Sprintf("string%d", varCounters["string"])
+		// Only treat StringConstantExpressionAst as positional argument if the previous non-CommandAst token is not a known command
+		if t.Type == "StringConstantExpressionAst" {
+			// Find the previous non-CommandAst token
+			prevIsParam := false
+			prevIsCommand := false
+			for j := i - 1; j >= 0; j-- {
+				if astTokens[j].Type == "CommandAst" {
+					continue
+				}
+				if astTokens[j].Type == "CommandParameterAst" {
+					prevIsParam = true
+				}
+				if astTokens[j].Type == "StringConstantExpressionAst" && isKnownCommand(astTokens[j].Text) {
+					prevIsCommand = true
+				}
+				break
 			}
-			highlighted = append(highlighted, highlightColor("{{"+varName+"}}"))
-			descriptions = append(descriptions, fmt.Sprintf("%s %s", highlightColor(varName), descColor(fmt.Sprintf("\u2190 was '%s', positional argument", t.Text))))
-			continue
+			if !prevIsParam && !isKnownCommand(t.Text) && !prevIsCommand {
+				// Standalone string (likely a positional argument)
+				varCounters["string"]++
+				var varName string
+				if varCounters["string"] == 1 {
+					varName = "string"
+				} else {
+					varName = fmt.Sprintf("string%d", varCounters["string"])
+				}
+				highlighted = append(highlighted, highlightColor("{{"+varName+"}}"))
+				descriptions = append(descriptions, fmt.Sprintf("%s %s", highlightColor(varName), descColor(fmt.Sprintf("\u2190 was '%s', positional argument", t.Text))))
+				continue
+			}
 		}
 		if t.Type != "CommandParameterAst" {
 			if t.Type != "PipelineAst" && t.Type != "ScriptBlockAst" && t.Type != "StatementBlockAst" && t.Type != "CommandExpressionAst" {
