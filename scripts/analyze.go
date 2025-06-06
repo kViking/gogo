@@ -90,8 +90,21 @@ func Analyze(command ...string) error {
 		if t.Type == "CommandAst" {
 			continue
 		}
+		if t.Type == "StringConstantExpressionAst" && (i == 0 || astTokens[i-1].Type != "CommandParameterAst") {
+			// Standalone string (likely a positional argument)
+			varCounters["string"]++
+			var varName string
+			if varCounters["string"] == 1 {
+				varName = "string"
+			} else {
+				varName = fmt.Sprintf("string%d", varCounters["string"])
+			}
+			highlighted = append(highlighted, highlightColor("{{"+varName+"}}"))
+			descriptions = append(descriptions, fmt.Sprintf("%s %s", highlightColor(varName), descColor(fmt.Sprintf("\u2190 was '%s', positional argument", t.Text))))
+			continue
+		}
 		if t.Type != "CommandParameterAst" {
-			if t.Type != "StringConstantExpressionAst" && t.Type != "PipelineAst" && t.Type != "ScriptBlockAst" && t.Type != "StatementBlockAst" && t.Type != "CommandExpressionAst" {
+			if t.Type != "PipelineAst" && t.Type != "ScriptBlockAst" && t.Type != "StatementBlockAst" && t.Type != "CommandExpressionAst" {
 				highlighted = append(highlighted, t.Text)
 			}
 			continue
