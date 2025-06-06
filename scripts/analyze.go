@@ -60,17 +60,41 @@ func Analyze(command ...string) error {
 	var descriptions []string
 	highlightColor := color.New(color.FgHiYellow, color.Bold).SprintFunc()
 	descColor := color.New(color.FgCyan).SprintFunc()
+	// For unique variable names
+	varCounters := map[string]int{"string": 0, "number": 0, "path": 0}
 	for _, t := range tokens {
 		contentStr := fmt.Sprintf("%v", t.Content)
 		typeStr := psTokenTypeToString(t.Type)
 		fmt.Printf("[DEBUG] Token: Type=%s, Content=%v\n", typeStr, t.Content)
+		var varName string
 		switch typeStr {
 		case "String":
-			highlighted = append(highlighted, highlightColor("["+contentStr+"]"))
-			descriptions = append(descriptions, fmt.Sprintf("%s %s", highlightColor(contentStr), descColor("\u2190 likely a string value ("+guessStringPurpose(contentStr)+")")))
+			if isLikelyPath(contentStr) {
+				varCounters["path"]++
+				if varCounters["path"] == 1 {
+					varName = "path"
+				} else {
+					varName = fmt.Sprintf("path%d", varCounters["path"])
+				}
+			} else {
+				varCounters["string"]++
+				if varCounters["string"] == 1 {
+					varName = "string"
+				} else {
+					varName = fmt.Sprintf("string%d", varCounters["string"])
+				}
+			}
+			highlighted = append(highlighted, highlightColor("{{"+varName+"}}"))
+			descriptions = append(descriptions, fmt.Sprintf("%s %s", highlightColor(varName), descColor(fmt.Sprintf("\u2190 was '%s', likely a string value (%s)", contentStr, guessStringPurpose(contentStr)))))
 		case "Number":
-			highlighted = append(highlighted, highlightColor("["+contentStr+"]"))
-			descriptions = append(descriptions, fmt.Sprintf("%s %s", highlightColor(contentStr), descColor("\u2190 likely a numeric value")))
+			varCounters["number"]++
+			if varCounters["number"] == 1 {
+				varName = "integer"
+			} else {
+				varName = fmt.Sprintf("integer%d", varCounters["number"])
+			}
+			highlighted = append(highlighted, highlightColor("{{"+varName+"}}"))
+			descriptions = append(descriptions, fmt.Sprintf("%s %s", highlightColor(varName), descColor(fmt.Sprintf("\u2190 was '%s', likely a numeric value", contentStr))))
 		default:
 			highlighted = append(highlighted, contentStr)
 		}
