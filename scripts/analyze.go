@@ -16,7 +16,7 @@ import (
 
 type PSToken struct {
 	Content interface{} `json:"Content"`
-	Type    string      `json:"Type"`
+	Type    interface{} `json:"Type"`
 }
 
 // Analyze prompts for a PowerShell command, tokenizes it, and highlights likely user-input sections with descriptions.
@@ -62,8 +62,9 @@ func Analyze(command ...string) error {
 	descColor := color.New(color.FgCyan).SprintFunc()
 	for _, t := range tokens {
 		contentStr := fmt.Sprintf("%v", t.Content)
-		fmt.Printf("[DEBUG] Token: Type=%s, Content=%v\n", t.Type, t.Content)
-		switch t.Type {
+		typeStr := psTokenTypeToString(t.Type)
+		fmt.Printf("[DEBUG] Token: Type=%s, Content=%v\n", typeStr, t.Content)
+		switch typeStr {
 		case "String":
 			highlighted = append(highlighted, highlightColor("["+contentStr+"]"))
 			descriptions = append(descriptions, fmt.Sprintf("%s %s", highlightColor(contentStr), descColor("\u2190 likely a string value ("+guessStringPurpose(contentStr)+")")))
@@ -85,6 +86,55 @@ func Analyze(command ...string) error {
 		}
 	}
 	return nil
+}
+
+// psTokenTypeToString converts a PowerShell token type to its string representation.
+func psTokenTypeToString(t interface{}) string {
+	switch v := t.(type) {
+	case string:
+		return v
+	case float64:
+		switch int(v) {
+		case 0:
+			return "None"
+		case 1:
+			return "Command"
+		case 2:
+			return "CommandArgument"
+		case 3:
+			return "String"
+		case 4:
+			return "Number"
+		case 5:
+			return "Variable"
+		case 6:
+			return "Parameter"
+		case 7:
+			return "StringExpandable"
+		case 8:
+			return "Operator"
+		case 9:
+			return "GroupStart"
+		case 10:
+			return "GroupEnd"
+		case 11:
+			return "Keyword"
+		case 12:
+			return "Comment"
+		case 13:
+			return "StatementSeparator"
+		case 14:
+			return "NewLine"
+		case 15:
+			return "LineContinuation"
+		case 16:
+			return "Position"
+		default:
+			return fmt.Sprintf("Unknown(%v)", v)
+		}
+	default:
+		return fmt.Sprintf("Unknown(%v)", v)
+	}
 }
 
 // guessStringPurpose tries to guess what a string is used for.
