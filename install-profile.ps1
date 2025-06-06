@@ -15,9 +15,6 @@ if (-not $GadgetPath) {
 
 $importLine = ". \"$GadgetPath\""
 
-# Debug output
-Write-Host "Checking for line: $importLine in $profilePath"
-
 # Check if the import line already exists
 if (-not (Select-String -Path $profilePath -Pattern ([regex]::Escape($importLine)) -Quiet)) {
     # Add the import line to the profile

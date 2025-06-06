@@ -20,16 +20,12 @@ type Settings struct {
 
 // updateSettingsFile updates the settings.json file to mark firstRun as false
 func updateSettingsFile() {
-	fmt.Println("DEBUG: Updating settings file to set firstRun=false")
-
 	// First try the current directory
 	cwdSettings := "settings.json"
 	execDirSettings := ""
 
 	// Check if settings exists in current directory
-	if _, err := os.Stat(cwdSettings); err == nil {
-		fmt.Println("DEBUG: Found settings file in current directory")
-	} else {
+	if _, err := os.Stat(cwdSettings); err != nil {
 		// Get the executable's directory path
 		execPath, err := os.Executable()
 		if err != nil {
@@ -37,15 +33,12 @@ func updateSettingsFile() {
 			return
 		}
 		execDir := filepath.Dir(execPath)
-		fmt.Println("DEBUG: Executable directory:", execDir)
 
 		// Define settings file path relative to the executable
 		execDirSettings = filepath.Join(execDir, "settings.json")
-		fmt.Println("DEBUG: Settings path in executable directory:", execDirSettings)
 
 		// Check if it exists in executable directory
 		if _, err := os.Stat(execDirSettings); err == nil {
-			fmt.Println("DEBUG: Found settings file in executable directory")
 			cwdSettings = "" // Only use executable directory
 		}
 	}
@@ -61,14 +54,11 @@ func updateSettingsFile() {
 		fmt.Println("Error marshaling settings:", err)
 		return
 	}
-	fmt.Println("DEBUG: JSON to write:", string(data))
 
 	// Try to write to current directory if the file exists there
 	if cwdSettings != "" {
 		if err := os.WriteFile(cwdSettings, data, 0644); err != nil {
 			fmt.Println("Error writing settings file to current directory:", err)
-		} else {
-			fmt.Println("DEBUG: Successfully wrote settings file to current directory")
 		}
 	}
 
@@ -76,8 +66,6 @@ func updateSettingsFile() {
 	if execDirSettings != "" {
 		if err := os.WriteFile(execDirSettings, data, 0644); err != nil {
 			fmt.Println("Error writing settings file to executable directory:", err)
-		} else {
-			fmt.Println("DEBUG: Successfully wrote settings file to executable directory")
 		}
 	}
 }

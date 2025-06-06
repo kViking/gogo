@@ -121,4 +121,4 @@ GoGoGadget list
 
 ## About
 
-GoGoGadget is free and open source. You can use it for anything. If you have questions, ask the person who gave you the installer. Report any issues on our [github](https://github.com/kviking/gogo/issues) and check our [releases](https://github.com/gogo/releases) page for new versions!
+GoGoGadget is free and open source. You can use it for anything. If you have questions, ask the person who gave you the installer. Report any issues on our [github](https://github.com/kViking/gogo/issues) and check our [releases](https://github.com/kViking/gogo/releases) page for new versions!

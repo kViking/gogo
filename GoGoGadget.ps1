@@ -1,11 +1,5 @@
 # powershell completion for GoGoGadget                           -*- shell-script -*-
 
-function __GoGoGadget_debug {
-    if ($env:BASH_COMP_DEBUG_FILE) {
-        "$args" | Out-File -Append -FilePath "$env:BASH_COMP_DEBUG_FILE"
-    }
-}
-
 filter __GoGoGadget_escapeStringWithSpecialChars {
     $_ -replace '\s|#|@|\$|;|,|''|\{|\}|\(|\)|"|`|\||<|>|&','`$&'
 }
@@ -21,10 +15,6 @@ filter __GoGoGadget_escapeStringWithSpecialChars {
     $Command = $CommandAst.CommandElements
     $Command = "$Command"
 
-    __GoGoGadget_debug ""
-    __GoGoGadget_debug "========= starting completion logic =========="
-    __GoGoGadget_debug "WordToComplete: $WordToComplete Command: $Command CursorPosition: $CursorPosition"
-
     # The user could have moved the cursor backwards on the command-line.
     # We need to trigger completion from the $CursorPosition location, so we need
     # to truncate the command-line ($Command) up to the $CursorPosition location.
@@ -33,7 +23,6 @@ filter __GoGoGadget_escapeStringWithSpecialChars {
     if ($Command.Length -gt $CursorPosition) {
         $Command=$Command.Substring(0,$CursorPosition)
     }
-    __GoGoGadget_debug "Truncated command: $Command"
 
     $ShellCompDirectiveError=1
     $ShellCompDirectiveNoSpace=2
@@ -47,7 +36,6 @@ filter __GoGoGadget_escapeStringWithSpecialChars {
     $Program,$Arguments = $Command.Split(" ",2)
 
     $RequestComp="$Program __complete $Arguments"
-    __GoGoGadget_debug "RequestComp: $RequestComp"
 
     # we cannot use $WordToComplete because it
     # has the wrong values if the cursor was moved
@@ -55,13 +43,10 @@ filter __GoGoGadget_escapeStringWithSpecialChars {
     if ($WordToComplete -ne "" ) {
         $WordToComplete = $Arguments.Split(" ")[-1]
     }
-    __GoGoGadget_debug "New WordToComplete: $WordToComplete"
-
 
     # Check for flag with equal sign
     $IsEqualFlag = ($WordToComplete -Like "--*=*" )
     if ( $IsEqualFlag ) {
-        __GoGoGadget_debug "Completing equal sign flag"
         # Remove the flag part
         $Flag,$WordToComplete = $WordToComplete.Split("=",2)
     }
@@ -69,7 +54,6 @@ filter __GoGoGadget_escapeStringWithSpecialChars {
     if ( $WordToComplete -eq "" -And ( -Not $IsEqualFlag )) {
         # If the last parameter is complete (there is a space following it)
         # We add an extra empty parameter so we can indicate this to the go method.
-        __GoGoGadget_debug "Adding extra empty parameter"
         # PowerShell 7.2+ changed the way how the arguments are passed to executables,
         # so for pre-7.2 or when Legacy argument passing is enabled we need to use
         # `"`" to pass an empty argument, a "" or '' does not work!!!
@@ -83,7 +67,6 @@ filter __GoGoGadget_escapeStringWithSpecialChars {
         }
     }
 
-    __GoGoGadget_debug "Calling $RequestComp"
     # First disable ActiveHelp which is not supported for Powershell
     ${env:GOGOGADGET_ACTIVE_HELP}=0
 
@@ -97,15 +80,12 @@ filter __GoGoGadget_escapeStringWithSpecialChars {
         # There is no directive specified
         $Directive = 0
     }
-    __GoGoGadget_debug "The completion directive is: $Directive"
 
     # remove directive (last element) from out
     $Out = $Out | Where-Object { $_ -ne $Out[-1] }
-    __GoGoGadget_debug "The completions are: $Out"
 
     if (($Directive -band $ShellCompDirectiveError) -ne 0 ) {
         # Error code.  No completion.
-        __GoGoGadget_debug "Received error from custom completion go code"
         return
     }
 
@@ -113,7 +93,6 @@ filter __GoGoGadget_escapeStringWithSpecialChars {
     [Array]$Values = $Out | ForEach-Object {
         #Split the output in name and description
         $Name, $Description = $_.Split("`t",2)
-        __GoGoGadget_debug "Name: $Name Description: $Description"
 
         # Look for the longest completion so that we can format things nicely
         if ($Longest -lt $Name.Length) {
@@ -135,13 +114,11 @@ filter __GoGoGadget_escapeStringWithSpecialChars {
     $Space = " "
     if (($Directive -band $ShellCompDirectiveNoSpace) -ne 0 ) {
         # remove the space here
-        __GoGoGadget_debug "ShellCompDirectiveNoSpace is called"
         $Space = ""
     }
 
     if ((($Directive -band $ShellCompDirectiveFilterFileExt) -ne 0 ) -or
        (($Directive -band $ShellCompDirectiveFilterDirs) -ne 0 ))  {
-        __GoGoGadget_debug "ShellCompDirectiveFilterFileExt ShellCompDirectiveFilterDirs are not supported"
 
         # return here to prevent the completion of the extensions
         return
@@ -153,7 +130,6 @@ filter __GoGoGadget_escapeStringWithSpecialChars {
 
         # Join the flag back if we have an equal sign flag
         if ( $IsEqualFlag ) {
-            __GoGoGadget_debug "Join the equal sign flag back to the completion value"
             $_.Name = $Flag + "=" + $_.Name
         }
     }
@@ -164,7 +140,6 @@ filter __GoGoGadget_escapeStringWithSpecialChars {
     }
 
     if (($Directive -band $ShellCompDirectiveNoFileComp) -ne 0 ) {
-        __GoGoGadget_debug "ShellCompDirectiveNoFileComp is called"
 
         if ($Values.Length -eq 0) {
             # Just print an empty string here so the
@@ -178,7 +153,6 @@ filter __GoGoGadget_escapeStringWithSpecialChars {
 
     # Get the current mode
     $Mode = (Get-PSReadLineKeyHandler | Where-Object {$_.Key -eq "Tab" }).Function
-    __GoGoGadget_debug "Mode: $Mode"
 
     $Values | ForEach-Object {
 
@@ -203,7 +177,6 @@ filter __GoGoGadget_escapeStringWithSpecialChars {
             "Complete" {
 
                 if ($Values.Length -eq 1) {
-                    __GoGoGadget_debug "Only one completion left"
 
                     # insert space after value
                     $CompletionText = $($comp.Name | __GoGoGadget_escapeStringWithSpecialChars) + $Space

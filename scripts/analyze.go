@@ -62,29 +62,22 @@ func Analyze(command ...string) error {
 
 	// Use PowerShell AST to get parameter-value pairs
 	psScript := fmt.Sprintf(`$ast = [System.Management.Automation.Language.Parser]::ParseInput('%s', [ref]$null, [ref]$null); $ast.FindAll({$args[0] -is [System.Management.Automation.Language.CommandAst]}, $true) | ForEach-Object { $_.CommandElements | ForEach-Object { [PSCustomObject]@{ Type = $_.GetType().Name; Text = $_.ToString() } } } | ConvertTo-Json`, strings.ReplaceAll(cmdStr, "'", "''"))
-	fmt.Println("[DEBUG] PowerShell AST command to analyze:", psScript)
 	cmd := exec.Command("pwsh", "-NoProfile", "-Command", psScript)
 
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	err := cmd.Run()
 	if err != nil {
-		fmt.Println("[DEBUG] PowerShell execution error:", err)
 		return fmt.Errorf("failed to run PowerShell: %w", err)
 	}
-
-	fmt.Println("[DEBUG] Raw PowerShell AST output:", out.String())
 
 	var astTokens []struct {
 		Type string `json:"Type"`
 		Text string `json:"Text"`
 	}
 	if err := json.Unmarshal(out.Bytes(), &astTokens); err != nil {
-		fmt.Println("[DEBUG] JSON unmarshal error:", err)
 		return fmt.Errorf("failed to parse PowerShell AST output: %w", err)
 	}
-
-	fmt.Printf("[DEBUG] Parsed AST tokens: %+v\n", astTokens)
 
 	// Highlight parameter-value pairs
 	var highlighted []string
