@@ -15,8 +15,8 @@ import (
 )
 
 type PSToken struct {
-	Content string `json:"Content"`
-	Type    string `json:"Type"`
+	Content interface{} `json:"Content"`
+	Type    string      `json:"Type"`
 }
 
 // Analyze prompts for a PowerShell command, tokenizes it, and highlights likely user-input sections with descriptions.
@@ -34,19 +34,26 @@ func Analyze(command ...string) error {
 
 	// Prepare PowerShell command to tokenize and output as JSON
 	psScript := fmt.Sprintf(`$input = '%s'; [System.Management.Automation.PSParser]::Tokenize($input, [ref]$null) | Select-Object Content,Type | ConvertTo-Json`, strings.ReplaceAll(cmdStr, "'", "''"))
+	fmt.Println("[DEBUG] PowerShell command to tokenize:", psScript)
 	cmd := exec.Command("pwsh", "-NoProfile", "-Command", psScript)
 
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	err := cmd.Run()
 	if err != nil {
+		fmt.Println("[DEBUG] PowerShell execution error:", err)
 		return fmt.Errorf("failed to run PowerShell: %w", err)
 	}
 
+	fmt.Println("[DEBUG] Raw PowerShell output:", out.String())
+
 	var tokens []PSToken
 	if err := json.Unmarshal(out.Bytes(), &tokens); err != nil {
+		fmt.Println("[DEBUG] JSON unmarshal error:", err)
 		return fmt.Errorf("failed to parse PowerShell output: %w", err)
 	}
+
+	fmt.Printf("[DEBUG] Parsed tokens: %+v\n", tokens)
 
 	// Highlight likely user-input tokens and describe them
 	var highlighted []string
@@ -54,15 +61,17 @@ func Analyze(command ...string) error {
 	highlightColor := color.New(color.FgHiYellow, color.Bold).SprintFunc()
 	descColor := color.New(color.FgCyan).SprintFunc()
 	for _, t := range tokens {
+		contentStr := fmt.Sprintf("%v", t.Content)
+		fmt.Printf("[DEBUG] Token: Type=%s, Content=%v\n", t.Type, t.Content)
 		switch t.Type {
 		case "String":
-			highlighted = append(highlighted, highlightColor("["+t.Content+"]"))
-			descriptions = append(descriptions, fmt.Sprintf("%s %s", highlightColor(t.Content), descColor("\u2190 likely a string value ("+guessStringPurpose(t.Content)+")")))
+			highlighted = append(highlighted, highlightColor("["+contentStr+"]"))
+			descriptions = append(descriptions, fmt.Sprintf("%s %s", highlightColor(contentStr), descColor("\u2190 likely a string value ("+guessStringPurpose(contentStr)+")")))
 		case "Number":
-			highlighted = append(highlighted, highlightColor("["+t.Content+"]"))
-			descriptions = append(descriptions, fmt.Sprintf("%s %s", highlightColor(t.Content), descColor("\u2190 likely a numeric value")))
+			highlighted = append(highlighted, highlightColor("["+contentStr+"]"))
+			descriptions = append(descriptions, fmt.Sprintf("%s %s", highlightColor(contentStr), descColor("\u2190 likely a numeric value")))
 		default:
-			highlighted = append(highlighted, t.Content)
+			highlighted = append(highlighted, contentStr)
 		}
 	}
 
