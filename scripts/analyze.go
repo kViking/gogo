@@ -76,13 +76,17 @@ func Analyze(command ...string) error {
 	psScript := fmt.Sprintf(`
 $ast = [System.Management.Automation.Language.Parser]::ParseInput('%s', [ref]$null, [ref]$null)
 $cmdAsts = $ast.FindAll({$args[0] -is [System.Management.Automation.Language.CommandAst]}, $true)
-$cmdAsts | ForEach-Object {
-    $cmd = $_
-    [PSCustomObject]@{
-        CommandName = $cmd.CommandElements[0].Value
-        Elements = $cmd.CommandElements | Select-Object @{n='Type';e={ $_.GetType().Name }}, @{n='Text';e={ $_.ToString() }}
-    }
-} | ConvertTo-Json
+if ($cmdAsts.Count -eq 0) {
+    '[]'
+} else {
+    @($cmdAsts | ForEach-Object {
+        $cmd = $_
+        [PSCustomObject]@{
+            CommandName = $cmd.CommandElements[0].Value
+            Elements = $cmd.CommandElements | Select-Object @{n='Type';e={ $_.GetType().Name }}, @{n='Text';e={ $_.ToString() }}
+        }
+    }) | ConvertTo-Json -Compress -Depth 5
+}
 `, strings.ReplaceAll(cmdStr, "'", "''"))
 	cmd := exec.Command("pwsh", "-NoProfile", "-Command", psScript)
 
@@ -91,6 +95,16 @@ $cmdAsts | ForEach-Object {
 	err := cmd.Run()
 	if err != nil {
 		return fmt.Errorf("failed to run PowerShell: %w", err)
+	}
+
+	jsonOut := strings.TrimSpace(out.String())
+	if jsonOut == "" {
+		return fmt.Errorf("PowerShell AST output was empty")
+	}
+
+	// If the output is a single object (starts with '{'), wrap it in a list for robust parsing
+	if strings.HasPrefix(jsonOut, "{") {
+		jsonOut = "[" + jsonOut + "]"
 	}
 
 	type CommandAstResult struct {
@@ -102,10 +116,13 @@ $cmdAsts | ForEach-Object {
 	}
 
 	var cmdResults []CommandAstResult
-	if err := json.Unmarshal(out.Bytes(), &cmdResults); err != nil {
-		return fmt.Errorf("failed to parse PowerShell AST output: %w", err)
+	if err := json.Unmarshal([]byte(jsonOut), &cmdResults); err != nil {
+		// Print error and return, but do not print usage/help
+		fmt.Fprintf(os.Stderr, "Error: failed to parse PowerShell AST output: %v\nRaw output: %s\n", err, jsonOut)
+		return fmt.Errorf("failed to parse PowerShell AST output")
 	}
 	if len(cmdResults) == 0 {
+		fmt.Fprintln(os.Stderr, "No command AST found.")
 		return fmt.Errorf("no command AST found")
 	}
 	cmdAst := cmdResults[0]
