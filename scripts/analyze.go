@@ -70,8 +70,8 @@ func Analyze(command ...string) error {
 			// Check if next token is a value and not another parameter/command/pipe
 			if i+1 < len(astTokens) {
 				val := astTokens[i+1]
-				// Only treat as a value if it's not another parameter, command, or pipe
-				if val.Type != "CommandParameterAst" && val.Type != "CommandAst" && val.Type != "PipelineAst" && val.Type != "ScriptBlockAst" && val.Type != "StatementBlockAst" && val.Type != "CommandExpressionAst" && val.Type != "Keyword" && val.Type != "StatementSeparatorAst" && val.Text != "|" {
+				// Only treat as a value if it's not another parameter, command, pipe, or keyword, and not a command name (e.g., Where-Object)
+				if val.Type != "CommandParameterAst" && val.Type != "CommandAst" && val.Type != "PipelineAst" && val.Type != "ScriptBlockAst" && val.Type != "StatementBlockAst" && val.Type != "CommandExpressionAst" && val.Type != "Keyword" && val.Type != "StatementSeparatorAst" && val.Text != "|" && !strings.HasSuffix(val.Text, "-Object") {
 					// Heuristics for common PowerShell parameter names
 					paramLower := strings.ToLower(strings.TrimLeft(param, "-"))
 					var varName string
@@ -101,9 +101,9 @@ func Analyze(command ...string) error {
 					descriptions = append(descriptions, fmt.Sprintf("%s %s", highlightColor(varName), descColor(fmt.Sprintf("\u2190 was '%s', value for %s", val.Text, param))))
 					i++ // skip value
 				} else {
-					// Parameter is a flag (no value)
+					// Parameter is a flag (no value) or next token is a command name
 					highlighted = append(highlighted, highlightColor(param))
-					descriptions = append(descriptions, fmt.Sprintf("%s %s", highlightColor(param), descColor("\u2190 flag parameter (no value)")))
+					descriptions = append(descriptions, fmt.Sprintf("%s %s", highlightColor(param), descColor("\u2190 flag parameter (no value) or command name follows")))
 				}
 			} else {
 				// Parameter is a flag (no value)
