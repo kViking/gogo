@@ -65,6 +65,10 @@ func Analyze(command ...string) error {
 	varCounters := map[string]int{"string": 0, "number": 0, "path": 0}
 	for i := 0; i < len(astTokens); i++ {
 		t := astTokens[i]
+		// Skip command names (e.g., Export-Csv, Where-Object, etc.)
+		if t.Type == "CommandAst" {
+			continue
+		}
 		if t.Type == "CommandParameterAst" {
 			param := t.Text
 			// Check if next token is a value and not another parameter/command/pipe
@@ -111,8 +115,8 @@ func Analyze(command ...string) error {
 				descriptions = append(descriptions, fmt.Sprintf("%s %s", highlightColor(param), descColor("\u2190 flag parameter (no value)")))
 			}
 		} else {
-			// Only show non-parameter tokens that are not just punctuation
-			if t.Type != "StringConstantExpressionAst" && t.Type != "CommandAst" && t.Type != "PipelineAst" && t.Type != "ScriptBlockAst" && t.Type != "StatementBlockAst" && t.Type != "CommandExpressionAst" {
+			// Only show non-parameter tokens that are not just punctuation or command names
+			if t.Type != "StringConstantExpressionAst" && t.Type != "PipelineAst" && t.Type != "ScriptBlockAst" && t.Type != "StatementBlockAst" && t.Type != "CommandExpressionAst" {
 				highlighted = append(highlighted, t.Text)
 			}
 		}
