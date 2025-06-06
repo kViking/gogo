@@ -18,6 +18,35 @@ type PSToken struct {
 	Type    interface{} `json:"Type"`
 }
 
+var knownCommands map[string]struct{}
+
+// getKnownCommands dynamically loads all available PowerShell command names
+func getKnownCommands() map[string]struct{} {
+	if knownCommands != nil {
+		return knownCommands
+	}
+	cmd := exec.Command("pwsh", "-NoProfile", "-Command", "Get-Command | Select-Object -ExpandProperty Name | ConvertTo-Json")
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	err := cmd.Run()
+	if err != nil {
+		// fallback: empty map
+		knownCommands = map[string]struct{}{}
+		return knownCommands
+	}
+	var names []string
+	if err := json.Unmarshal(out.Bytes(), &names); err != nil {
+		knownCommands = map[string]struct{}{}
+		return knownCommands
+	}
+	m := make(map[string]struct{}, len(names))
+	for _, n := range names {
+		m[n] = struct{}{}
+	}
+	knownCommands = m
+	return knownCommands
+}
+
 // Analyze prompts for a PowerShell command, tokenizes it, and highlights likely user-input sections with descriptions.
 // If command is empty, it prompts the user.
 func Analyze(command ...string) error {
@@ -65,61 +94,53 @@ func Analyze(command ...string) error {
 	varCounters := map[string]int{"string": 0, "number": 0, "path": 0}
 	for i := 0; i < len(astTokens); i++ {
 		t := astTokens[i]
-		// Skip command names (e.g., Export-Csv, Where-Object, etc.)
 		if t.Type == "CommandAst" {
 			continue
 		}
-		if t.Type == "CommandParameterAst" {
-			param := t.Text
-			// Check if next token is a value and not another parameter/command/pipe
-			if i+1 < len(astTokens) {
-				val := astTokens[i+1]
-				// Only treat as a value if it's not another parameter, command, pipe, or keyword, and not a command name (e.g., Where-Object)
-				if val.Type != "CommandParameterAst" && val.Type != "CommandAst" && val.Type != "PipelineAst" && val.Type != "ScriptBlockAst" && val.Type != "StatementBlockAst" && val.Type != "CommandExpressionAst" && val.Type != "Keyword" && val.Type != "StatementSeparatorAst" && val.Text != "|" && !strings.HasSuffix(val.Text, "-Object") {
-					// Heuristics for common PowerShell parameter names
-					paramLower := strings.ToLower(strings.TrimLeft(param, "-"))
-					var varName string
-					if strings.Contains(paramLower, "path") || strings.Contains(paramLower, "file") || strings.Contains(paramLower, "dir") || isLikelyPath(val.Text) {
-						varCounters["path"]++
-						if varCounters["path"] == 1 {
-							varName = "path"
-						} else {
-							varName = fmt.Sprintf("path%d", varCounters["path"])
-						}
-					} else if strings.Contains(paramLower, "count") || strings.Contains(paramLower, "size") || strings.Contains(paramLower, "length") || strings.Contains(paramLower, "number") || isNumeric(val.Text) {
-						varCounters["number"]++
-						if varCounters["number"] == 1 {
-							varName = "integer"
-						} else {
-							varName = fmt.Sprintf("integer%d", varCounters["number"])
-						}
-					} else {
-						varCounters["string"]++
-						if varCounters["string"] == 1 {
-							varName = "string"
-						} else {
-							varName = fmt.Sprintf("string%d", varCounters["string"])
-						}
-					}
-					highlighted = append(highlighted, param+" "+highlightColor("{{"+varName+"}}"))
-					descriptions = append(descriptions, fmt.Sprintf("%s %s", highlightColor(varName), descColor(fmt.Sprintf("\u2190 was '%s', value for %s", val.Text, param))))
-					i++ // skip value
-				} else {
-					// Parameter is a flag (no value) or next token is a command name
-					highlighted = append(highlighted, highlightColor(param))
-					descriptions = append(descriptions, fmt.Sprintf("%s %s", highlightColor(param), descColor("\u2190 flag parameter (no value) or command name follows")))
-				}
-			} else {
-				// Parameter is a flag (no value)
-				highlighted = append(highlighted, highlightColor(param))
-				descriptions = append(descriptions, fmt.Sprintf("%s %s", highlightColor(param), descColor("\u2190 flag parameter (no value)")))
-			}
-		} else {
-			// Only show non-parameter tokens that are not just punctuation or command names
+		if t.Type != "CommandParameterAst" {
 			if t.Type != "StringConstantExpressionAst" && t.Type != "PipelineAst" && t.Type != "ScriptBlockAst" && t.Type != "StatementBlockAst" && t.Type != "CommandExpressionAst" {
 				highlighted = append(highlighted, t.Text)
 			}
+			continue
 		}
+		param := t.Text
+		isValue := false
+		if i+1 < len(astTokens) {
+			val := astTokens[i+1]
+			isValue = val.Type != "CommandParameterAst" && val.Type != "CommandAst" && val.Type != "PipelineAst" && val.Type != "ScriptBlockAst" && val.Type != "StatementBlockAst" && val.Type != "CommandExpressionAst" && val.Type != "Keyword" && val.Type != "StatementSeparatorAst" && val.Text != "|" && !strings.HasSuffix(val.Text, "-Object") && !isKnownCommand(val.Text)
+			if isValue {
+				paramLower := strings.ToLower(strings.TrimLeft(param, "-"))
+				var varName string
+				if strings.Contains(paramLower, "path") || strings.Contains(paramLower, "file") || strings.Contains(paramLower, "dir") || isLikelyPath(val.Text) {
+					varCounters["path"]++
+					if varCounters["path"] == 1 {
+						varName = "path"
+					} else {
+						varName = fmt.Sprintf("path%d", varCounters["path"])
+					}
+				} else if strings.Contains(paramLower, "count") || strings.Contains(paramLower, "size") || strings.Contains(paramLower, "length") || strings.Contains(paramLower, "number") || isNumeric(val.Text) {
+					varCounters["number"]++
+					if varCounters["number"] == 1 {
+						varName = "integer"
+					} else {
+						varName = fmt.Sprintf("integer%d", varCounters["number"])
+					}
+				} else {
+					varCounters["string"]++
+					if varCounters["string"] == 1 {
+						varName = "string"
+					} else {
+						varName = fmt.Sprintf("string%d", varCounters["string"])
+					}
+				}
+				highlighted = append(highlighted, param+" "+highlightColor("{{"+varName+"}}"))
+				descriptions = append(descriptions, fmt.Sprintf("%s %s", highlightColor(varName), descColor(fmt.Sprintf("\u2190 was '%s', value for %s", val.Text, param))))
+				i++ // skip value
+				continue
+			}
+		}
+		highlighted = append(highlighted, highlightColor(param))
+		descriptions = append(descriptions, fmt.Sprintf("%s %s", highlightColor(param), descColor("\u2190 flag parameter (no value) or command name follows")))
 	}
 
 	fmt.Println(color.New(color.FgGreen, color.Bold).Sprint("\nSuggested parameterization:"))
@@ -143,6 +164,18 @@ func isNumeric(s string) bool {
 func isLikelyPath(s string) bool {
 	// Windows or Unix path
 	return strings.Contains(s, `\`) || strings.Contains(s, `/`)
+}
+
+// Helper to check if a string is a known PowerShell command
+func isKnownCommand(s string) bool {
+	if strings.Contains(s, "-") {
+		parts := strings.SplitN(s, "-", 2)
+		if len(parts) == 2 && len(parts[0]) > 0 && len(parts[1]) > 0 {
+			return true
+		}
+	}
+	_, ok := getKnownCommands()[s]
+	return ok
 }
 
 // NewAnalyzeCommand creates a new Cobra command for analyze.
