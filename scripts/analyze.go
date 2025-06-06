@@ -65,38 +65,51 @@ func Analyze(command ...string) error {
 	varCounters := map[string]int{"string": 0, "number": 0, "path": 0}
 	for i := 0; i < len(astTokens); i++ {
 		t := astTokens[i]
-		// Only consider parameter-value pairs
-		if t.Type == "CommandParameterAst" && i+1 < len(astTokens) {
+		if t.Type == "CommandParameterAst" {
 			param := t.Text
-			val := astTokens[i+1]
-			var varName string
-			// Heuristics for common PowerShell parameter names
-			paramLower := strings.ToLower(strings.TrimLeft(param, "-"))
-			if strings.Contains(paramLower, "path") || strings.Contains(paramLower, "file") || strings.Contains(paramLower, "dir") || isLikelyPath(val.Text) {
-				varCounters["path"]++
-				if varCounters["path"] == 1 {
-					varName = "path"
+			// Check if next token is a value and not another parameter/command/pipe
+			if i+1 < len(astTokens) {
+				val := astTokens[i+1]
+				// Only treat as a value if it's not another parameter, command, or pipe
+				if val.Type != "CommandParameterAst" && val.Type != "CommandAst" && val.Type != "PipelineAst" && val.Type != "ScriptBlockAst" && val.Type != "StatementBlockAst" && val.Type != "CommandExpressionAst" && val.Type != "Keyword" && val.Type != "StatementSeparatorAst" && val.Text != "|" {
+					// Heuristics for common PowerShell parameter names
+					paramLower := strings.ToLower(strings.TrimLeft(param, "-"))
+					var varName string
+					if strings.Contains(paramLower, "path") || strings.Contains(paramLower, "file") || strings.Contains(paramLower, "dir") || isLikelyPath(val.Text) {
+						varCounters["path"]++
+						if varCounters["path"] == 1 {
+							varName = "path"
+						} else {
+							varName = fmt.Sprintf("path%d", varCounters["path"])
+						}
+					} else if strings.Contains(paramLower, "count") || strings.Contains(paramLower, "size") || strings.Contains(paramLower, "length") || strings.Contains(paramLower, "number") || isNumeric(val.Text) {
+						varCounters["number"]++
+						if varCounters["number"] == 1 {
+							varName = "integer"
+						} else {
+							varName = fmt.Sprintf("integer%d", varCounters["number"])
+						}
+					} else {
+						varCounters["string"]++
+						if varCounters["string"] == 1 {
+							varName = "string"
+						} else {
+							varName = fmt.Sprintf("string%d", varCounters["string"])
+						}
+					}
+					highlighted = append(highlighted, param+" "+highlightColor("{{"+varName+"}}"))
+					descriptions = append(descriptions, fmt.Sprintf("%s %s", highlightColor(varName), descColor(fmt.Sprintf("\u2190 was '%s', value for %s", val.Text, param))))
+					i++ // skip value
 				} else {
-					varName = fmt.Sprintf("path%d", varCounters["path"])
-				}
-			} else if strings.Contains(paramLower, "count") || strings.Contains(paramLower, "size") || strings.Contains(paramLower, "length") || strings.Contains(paramLower, "number") || isNumeric(val.Text) {
-				varCounters["number"]++
-				if varCounters["number"] == 1 {
-					varName = "integer"
-				} else {
-					varName = fmt.Sprintf("integer%d", varCounters["number"])
+					// Parameter is a flag (no value)
+					highlighted = append(highlighted, highlightColor(param))
+					descriptions = append(descriptions, fmt.Sprintf("%s %s", highlightColor(param), descColor("\u2190 flag parameter (no value)")))
 				}
 			} else {
-				varCounters["string"]++
-				if varCounters["string"] == 1 {
-					varName = "string"
-				} else {
-					varName = fmt.Sprintf("string%d", varCounters["string"])
-				}
+				// Parameter is a flag (no value)
+				highlighted = append(highlighted, highlightColor(param))
+				descriptions = append(descriptions, fmt.Sprintf("%s %s", highlightColor(param), descColor("\u2190 flag parameter (no value)")))
 			}
-			highlighted = append(highlighted, param+" "+highlightColor("{{"+varName+"}}"))
-			descriptions = append(descriptions, fmt.Sprintf("%s %s", highlightColor(varName), descColor(fmt.Sprintf("\u2190 was '%s', value for %s", val.Text, param))))
-			i++ // skip value
 		} else {
 			// Only show non-parameter tokens that are not just punctuation
 			if t.Type != "StringConstantExpressionAst" && t.Type != "CommandAst" && t.Type != "PipelineAst" && t.Type != "ScriptBlockAst" && t.Type != "StatementBlockAst" && t.Type != "CommandExpressionAst" {
