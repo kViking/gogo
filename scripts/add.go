@@ -12,32 +12,64 @@ import (
 )
 
 func NewAddCommand() *cobra.Command {
+	var scriptName, command, desc string
+
 	cmd := &cobra.Command{
 		Use:   "add",
 		Short: "Add a new script shortcut",
+		PreRun: func(cmd *cobra.Command, args []string) {
+			// If --command is provided, dynamically add flags for variables
+			c, _ := cmd.Flags().GetString("command")
+			for _, v := range extractVariables(c) {
+				if cmd.Flags().Lookup(v) == nil {
+					cmd.Flags().String(v, "", fmt.Sprintf("Description for variable '%s'", v))
+				}
+			}
+		},
 		Run: func(cmd *cobra.Command, args []string) {
 			scripts, _ := loadScripts()
 			reader := bufio.NewReader(os.Stdin)
-			fmt.Print("📝 Enter PowerShell command (use {{VARNAME}} for variables): ")
-			command, _ := reader.ReadString('\n')
-			command = strings.TrimSpace(command)
-			fmt.Print("🔖 Enter script name: ")
-			name, _ := reader.ReadString('\n')
-			name = strings.TrimSpace(name)
-			fmt.Print("💡 Enter script description: ")
-			desc, _ := reader.ReadString('\n')
-			desc = strings.TrimSpace(desc)
+
+			// Get command
+			command, _ = cmd.Flags().GetString("command")
+			if command == "" {
+				fmt.Print("📝 Enter PowerShell command (use {{VARNAME}} for variables): ")
+				c, _ := reader.ReadString('\n')
+				command = strings.TrimSpace(c)
+			}
+
+			// Get script name
+			scriptName, _ = cmd.Flags().GetString("scriptname")
+			if scriptName == "" {
+				fmt.Print("🔖 Enter script name: ")
+				n, _ := reader.ReadString('\n')
+				scriptName = strings.TrimSpace(n)
+			}
+
+			// Get description
+			desc, _ = cmd.Flags().GetString("desc")
+			if desc == "" {
+				fmt.Print("💡 Enter script description: ")
+				d, _ := reader.ReadString('\n')
+				desc = strings.TrimSpace(d)
+			}
+
 			variables := map[string]string{}
 			for _, v := range extractVariables(command) {
-				fmt.Printf("✏️  Describe variable '%s': ", v)
-				vd, _ := reader.ReadString('\n')
-				variables[v] = strings.TrimSpace(vd)
+				val, _ := cmd.Flags().GetString(v)
+				if val == "" {
+					fmt.Printf("✏️  Describe variable '%s': ", v)
+					vd, _ := reader.ReadString('\n')
+					val = strings.TrimSpace(vd)
+				}
+				variables[v] = val
 			}
-			if name == "" || command == "" {
+
+			if scriptName == "" || command == "" {
 				color.New(color.FgRed).Fprintln(os.Stderr, "❌ Name and command are required.")
 				return
 			}
-			scripts[name] = ScriptConfig{
+			scripts[scriptName] = ScriptConfig{
 				Description: desc,
 				Command:     command,
 				Variables:   variables,
@@ -49,6 +81,11 @@ func NewAddCommand() *cobra.Command {
 			color.New(color.FgGreen).Println("✅ Script added!")
 		},
 	}
+
+	cmd.Flags().StringVar(&scriptName, "scriptname", "", "Name of the script")
+	cmd.Flags().StringVar(&command, "command", "", "PowerShell command (use {{VARNAME}} for variables)")
+	cmd.Flags().StringVar(&desc, "desc", "", "Script description")
+
 	return cmd
 }
 

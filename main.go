@@ -80,6 +80,7 @@ Use 'GoGoGadget add' to create a new shortcut, 'GoGoGadget list' to see all, or 
 	}
 
 	rootCmd.AddCommand(scripts.NewAddCommand())
+	rootCmd.AddCommand(scripts.NewAnalyzeCommand())
 	rootCmd.AddCommand(scripts.NewListCommand())
 	rootCmd.AddCommand(scripts.NewDeleteCommand())
 	rootCmd.AddCommand(scripts.NewVariablesCommand())
