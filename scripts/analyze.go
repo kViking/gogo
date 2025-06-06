@@ -30,7 +30,6 @@ func getKnownCommands() map[string]struct{} {
 	cmd.Stdout = &out
 	err := cmd.Run()
 	if err != nil {
-		// fallback: empty map
 		knownCommands = map[string]struct{}{}
 		return knownCommands
 	}
@@ -41,10 +40,23 @@ func getKnownCommands() map[string]struct{} {
 	}
 	m := make(map[string]struct{}, len(names))
 	for _, n := range names {
-		m[n] = struct{}{}
+		m[strings.ToLower(n)] = struct{}{}
 	}
 	knownCommands = m
 	return knownCommands
+}
+
+// Helper to check if a string is a known PowerShell command
+func isKnownCommand(s string) bool {
+	s = strings.ToLower(s)
+	if strings.Contains(s, "-") {
+		parts := strings.SplitN(s, "-", 2)
+		if len(parts) == 2 && len(parts[0]) > 0 && len(parts[1]) > 0 {
+			return true
+		}
+	}
+	_, ok := getKnownCommands()[s]
+	return ok
 }
 
 // Analyze prompts for a PowerShell command, tokenizes it, and highlights likely user-input sections with descriptions.
@@ -61,7 +73,17 @@ func Analyze(command ...string) error {
 	}
 
 	// Use PowerShell AST to get parameter-value pairs
-	psScript := fmt.Sprintf(`$ast = [System.Management.Automation.Language.Parser]::ParseInput('%s', [ref]$null, [ref]$null); $ast.FindAll({$args[0] -is [System.Management.Automation.Language.CommandAst]}, $true) | ForEach-Object { $_.CommandElements | ForEach-Object { [PSCustomObject]@{ Type = $_.GetType().Name; Text = $_.ToString() } } } | ConvertTo-Json`, strings.ReplaceAll(cmdStr, "'", "''"))
+	psScript := fmt.Sprintf(`
+$ast = [System.Management.Automation.Language.Parser]::ParseInput('%s', [ref]$null, [ref]$null)
+$cmdAsts = $ast.FindAll({$args[0] -is [System.Management.Automation.Language.CommandAst]}, $true)
+$cmdAsts | ForEach-Object {
+    $cmd = $_
+    [PSCustomObject]@{
+        CommandName = $cmd.CommandElements[0].Value
+        Elements = $cmd.CommandElements | Select-Object @{n='Type';e={ $_.GetType().Name }}, @{n='Text';e={ $_.ToString() }}
+    }
+} | ConvertTo-Json
+`, strings.ReplaceAll(cmdStr, "'", "''"))
 	cmd := exec.Command("pwsh", "-NoProfile", "-Command", psScript)
 
 	var out bytes.Buffer
@@ -71,30 +93,49 @@ func Analyze(command ...string) error {
 		return fmt.Errorf("failed to run PowerShell: %w", err)
 	}
 
-	var astTokens []struct {
-		Type string `json:"Type"`
-		Text string `json:"Text"`
-	}
-	if err := json.Unmarshal(out.Bytes(), &astTokens); err != nil {
-		return fmt.Errorf("failed to parse PowerShell AST output: %w", err)
+	type CommandAstResult struct {
+		CommandName string `json:"CommandName"`
+		Elements    []struct {
+			Type string `json:"Type"`
+			Text string `json:"Text"`
+		} `json:"Elements"`
 	}
 
-	// Highlight parameter-value pairs
+	var cmdResults []CommandAstResult
+	if err := json.Unmarshal(out.Bytes(), &cmdResults); err != nil {
+		return fmt.Errorf("failed to parse PowerShell AST output: %w", err)
+	}
+	if len(cmdResults) == 0 {
+		return fmt.Errorf("no command AST found")
+	}
+	cmdAst := cmdResults[0]
+	astTokens := cmdAst.Elements
+
 	var highlighted []string
 	var descriptions []string
 	highlightColor := color.New(color.FgHiYellow, color.Bold).SprintFunc()
 	descColor := color.New(color.FgCyan).SprintFunc()
-	varCounters := map[string]int{"string": 0, "number": 0, "path": 0}
+	varCounters := map[string]int{"string": 0, "path": 0}
+
+	// Find the first element that is a command name (Type from GetType().Name and isKnownCommand)
+	commandIdx := -1
+	for i, t := range astTokens {
+		if t.Type == "StringConstantExpressionAst" && isKnownCommand(t.Text) {
+			commandIdx = i
+			break
+		}
+	}
+
 	for i := 0; i < len(astTokens); i++ {
 		t := astTokens[i]
-		if t.Type == "CommandAst" {
+		if i == commandIdx {
+			// This is the command name, print as-is
+			highlighted = append(highlighted, t.Text)
 			continue
 		}
-		// Only treat StringConstantExpressionAst as positional argument if the previous non-CommandAst token is not a known command
+		// Only use the string Type (from GetType().Name) for all logic
 		if t.Type == "StringConstantExpressionAst" {
-			// Find the previous non-CommandAst token
 			prevIsParam := false
-			prevIsCommand := false
 			for j := i - 1; j >= 0; j-- {
 				if astTokens[j].Type == "CommandAst" {
 					continue
@@ -102,13 +143,9 @@ func Analyze(command ...string) error {
 				if astTokens[j].Type == "CommandParameterAst" {
 					prevIsParam = true
 				}
-				if astTokens[j].Type == "StringConstantExpressionAst" && isKnownCommand(astTokens[j].Text) {
-					prevIsCommand = true
-				}
 				break
 			}
-			if !prevIsParam && !isKnownCommand(t.Text) && !prevIsCommand {
-				// Standalone string (likely a positional argument)
+			if !prevIsParam && !isKnownCommand(t.Text) {
 				varCounters["string"]++
 				var varName string
 				if varCounters["string"] == 1 {
@@ -117,7 +154,7 @@ func Analyze(command ...string) error {
 					varName = fmt.Sprintf("string%d", varCounters["string"])
 				}
 				highlighted = append(highlighted, highlightColor("{{"+varName+"}}"))
-				descriptions = append(descriptions, fmt.Sprintf("%s %s", highlightColor(varName), descColor(fmt.Sprintf("\u2190 was '%s', positional argument", t.Text))))
+				descriptions = append(descriptions, fmt.Sprintf("%s %s", highlightColor(varName), descColor(fmt.Sprintf("\u2190 was '%s', positional argument (type: %s)", t.Text, t.Type))))
 				continue
 			}
 		}
@@ -142,13 +179,6 @@ func Analyze(command ...string) error {
 					} else {
 						varName = fmt.Sprintf("path%d", varCounters["path"])
 					}
-				} else if strings.Contains(paramLower, "count") || strings.Contains(paramLower, "size") || strings.Contains(paramLower, "length") || strings.Contains(paramLower, "number") || isNumeric(val.Text) {
-					varCounters["number"]++
-					if varCounters["number"] == 1 {
-						varName = "integer"
-					} else {
-						varName = fmt.Sprintf("integer%d", varCounters["number"])
-					}
 				} else {
 					varCounters["string"]++
 					if varCounters["string"] == 1 {
@@ -158,7 +188,7 @@ func Analyze(command ...string) error {
 					}
 				}
 				highlighted = append(highlighted, param+" "+highlightColor("{{"+varName+"}}"))
-				descriptions = append(descriptions, fmt.Sprintf("%s %s", highlightColor(varName), descColor(fmt.Sprintf("\u2190 was '%s', value for %s", val.Text, param))))
+				descriptions = append(descriptions, fmt.Sprintf("%s %s", highlightColor(varName), descColor(fmt.Sprintf("\u2190 was '%s', value for %s (type: %s)", val.Text, param, val.Type))))
 				i++ // skip value
 				continue
 			}
@@ -179,27 +209,9 @@ func Analyze(command ...string) error {
 	return nil
 }
 
-// Helper to check if a string is numeric
-func isNumeric(s string) bool {
-	_, err := fmt.Sscanf(s, "%f", new(float64))
-	return err == nil
-}
-
 func isLikelyPath(s string) bool {
 	// Windows or Unix path
 	return strings.Contains(s, `\`) || strings.Contains(s, `/`)
-}
-
-// Helper to check if a string is a known PowerShell command
-func isKnownCommand(s string) bool {
-	if strings.Contains(s, "-") {
-		parts := strings.SplitN(s, "-", 2)
-		if len(parts) == 2 && len(parts[0]) > 0 && len(parts[1]) > 0 {
-			return true
-		}
-	}
-	_, ok := getKnownCommands()[s]
-	return ok
 }
 
 // NewAnalyzeCommand creates a new Cobra command for analyze.
