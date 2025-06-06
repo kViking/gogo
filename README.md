@@ -91,6 +91,24 @@ This will remove the shortcut called `greet`.
 
 ---
 
+## Analyze Your PowerShell Commands
+
+GoGoGadget 0.1.1 introduces the `analyze` command! If you’re not sure which parts of your PowerShell command should be variables, just run:
+
+```powershell
+gogogadget analyze --command "Get-Content 'C:\\Users\\me\\file.txt' -Encoding UTF8"
+```
+
+Or simply:
+
+```powershell
+gogogadget analyze
+```
+
+and paste your command when prompted. GoGoGadget will highlight likely user input sections (like file paths, numbers, or strings) and suggest how to turn them into variables. This makes creating shortcuts even easier for everyone!
+
+---
+
 ## Need Help?
 
 If you type a command wrong, GoGoGadget will show you what to do. You can always see your shortcuts with:
