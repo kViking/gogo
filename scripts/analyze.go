@@ -121,7 +121,7 @@ $cmdAsts = $ast.FindAll({$args[0] -is [System.Management.Automation.Language.Com
 
 	// Parse the combined output
 	type Token struct {
-		Type    string `json:"Type"`
+		Type    int    `json:"Type"`
 		Content string `json:"Content"`
 	}
 	type CommandAstResult struct {
@@ -139,6 +139,70 @@ $cmdAsts = $ast.FindAll({$args[0] -is [System.Management.Automation.Language.Com
 	if err := json.Unmarshal([]byte(jsonOut), &result); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: failed to parse PowerShell output: %v\nRaw output: %s\n", err, jsonOut)
 		return fmt.Errorf("failed to parse PowerShell output")
+	}
+
+	// Helper: map PSToken type int to string name for highlighting
+	psTokenTypeName := func(t int) string {
+		switch t {
+		case 0:
+			return "Unknown"
+		case 1:
+			return "Command"
+		case 2:
+			return "CommandParameter"
+		case 3:
+			return "Number"
+		case 4:
+			return "String"
+		case 5:
+			return "Variable"
+		case 6:
+			return "Member"
+		case 7:
+			return "LoopLabel"
+		case 8:
+			return "Attribute"
+		case 9:
+			return "Type"
+		case 10:
+			return "Keyword"
+		case 11:
+			return "Comment"
+		case 12:
+			return "StatementSeparator"
+		case 13:
+			return "GroupStart"
+		case 14:
+			return "GroupEnd"
+		case 15:
+			return "CurlyBracketStart"
+		case 16:
+			return "CurlyBracketEnd"
+		case 17:
+			return "SquareBracketStart"
+		case 18:
+			return "SquareBracketEnd"
+		case 19:
+			return "LineContinuation"
+		case 20:
+			return "NewLine"
+		case 21:
+			return "Whitespace"
+		case 22:
+			return "StringExpandable"
+		case 23:
+			return "HereStringExpandable"
+		case 24:
+			return "HereString"
+		case 25:
+			return "Operator"
+		case 26:
+			return "VariableExpandable"
+		case 27:
+			return "EmbeddedCommand"
+		default:
+			return "Other"
+		}
 	}
 
 	// Build a set of AST argument values for highlighting
@@ -159,7 +223,7 @@ $cmdAsts = $ast.FindAll({$args[0] -is [System.Management.Automation.Language.Com
 			origHighlighted = append(origHighlighted, highlightColor("{{"+t.Content+"}}"))
 		} else if isKnownCommand(t.Content) {
 			origHighlighted = append(origHighlighted, highlightColor(t.Content))
-		} else if t.Type == "CommandParameter" {
+		} else if psTokenTypeName(t.Type) == "CommandParameter" {
 			origHighlighted = append(origHighlighted, color.New(color.FgCyan, color.Bold).Sprint(t.Content))
 		} else {
 			origHighlighted = append(origHighlighted, t.Content)
