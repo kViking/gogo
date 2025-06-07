@@ -207,13 +207,18 @@ $cmdAsts = $ast.FindAll({$args[0] -is [System.Management.Automation.Language.Com
 
 	// Build a set of AST argument values for highlighting
 	astArgs := make(map[string]struct{})
+	debugTypeColor := color.New(color.FgMagenta).SprintFunc()
+	debugValColor := color.New(color.FgYellow).SprintFunc()
 	for _, cmd := range result.Commands {
 		for _, el := range cmd.Elements {
-			if el.Type == "StringConstantExpressionAst" && !isKnownCommand(el.Text) {
+			// Compact, colored debug output: [T:Type]V:Value
+			fmt.Fprintf(os.Stderr, "%s%s%s%s ", debugTypeColor("[T:"), debugTypeColor(el.Type), debugTypeColor("]V:"), debugValColor(el.Text))
+			if (el.Type == "StringConstantExpressionAst" || el.Type == "ExpandableStringExpressionAst") && !isKnownCommand(el.Text) {
 				astArgs[el.Text] = struct{}{}
 			}
 		}
 	}
+	fmt.Fprintln(os.Stderr) // Newline after debug output
 
 	// Print the user's original command, syntax highlighted using the tokenizer and AST
 	fmt.Println(color.New(color.FgGreen, color.Bold).Sprint("\nOriginal command:"))
@@ -293,11 +298,6 @@ $cmdAsts = $ast.FindAll({$args[0] -is [System.Management.Automation.Language.Com
 		}
 	}
 	return nil
-}
-
-func isLikelyPath(s string) bool {
-	// Windows or Unix path
-	return strings.Contains(s, `\`) || strings.Contains(s, `/`)
 }
 
 // NewAnalyzeCommand creates a new Cobra command for analyze.
