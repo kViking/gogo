@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"github.com/fatih/color"
@@ -12,7 +13,6 @@ import (
 )
 
 const (
-	ScriptsFile = "user_scripts.json"
 	DefaultDesc = "Value for %s"
 )
 
@@ -21,7 +21,6 @@ var (
 	errorText   = color.New(color.FgRed)
 	successText = color.New(color.FgGreen)
 	infoText    = color.New(color.FgCyan)
-	warnText    = color.New(color.FgYellow)
 )
 
 type ScriptConfig struct {
@@ -32,9 +31,21 @@ type ScriptConfig struct {
 
 type Scripts map[string]ScriptConfig
 
-// loadScripts loads all scripts from the user_scripts.json file
+// getUserScriptsPath returns the user-writable path for user_scripts.json
+func getUserScriptsPath() string {
+	dir, err := os.UserConfigDir()
+	if err != nil {
+		// fallback to home dir
+		dir, _ = os.UserHomeDir()
+	}
+	dir = filepath.Join(dir, "GoGoGadget")
+	_ = os.MkdirAll(dir, 0755)
+	return filepath.Join(dir, "user_scripts.json")
+}
+
+// loadScripts loads all scripts from the user_scripts.json file in user config dir
 func loadScripts() (Scripts, error) {
-	scriptsPath := ScriptsFile
+	scriptsPath := getUserScriptsPath()
 	if _, err := os.Stat(scriptsPath); os.IsNotExist(err) {
 		emptyScripts := make(Scripts)
 		data, _ := json.MarshalIndent(emptyScripts, "", "  ")
@@ -53,13 +64,13 @@ func loadScripts() (Scripts, error) {
 	return scripts, nil
 }
 
-// saveScripts saves all scripts to the user_scripts.json file
+// saveScripts saves all scripts to the user_scripts.json file in user config dir
 func saveScripts(scripts Scripts) error {
 	data, err := json.MarshalIndent(scripts, "", "  ")
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(ScriptsFile, data, 0644)
+	return os.WriteFile(getUserScriptsPath(), data, 0644)
 }
 
 // getVariableDescription returns the description for a variable or a default
@@ -192,30 +203,4 @@ func createScriptRunFunc(name string, config ScriptConfig, varNames []string) fu
 			successText.Println("✅ Script finished! If you expected output, check above.")
 		}
 	}
-}
-
-// createVariablesListFunc returns a function to list variables for a script
-func createVariablesListFunc(name string, config ScriptConfig, varNames []string) func(*cobra.Command, []string) {
-	return func(cmd *cobra.Command, args []string) {
-		if len(varNames) == 0 {
-			warnText.Println("This shortcut has no variables.")
-			return
-		}
-		infoText.Printf("Variables for '%s':\n", name)
-		for _, varName := range varNames {
-			desc := getVariableDescription(varName, config)
-			successText.Printf("  %s: ", varName)
-			fmt.Printf("%s\n", desc)
-		}
-	}
-}
-
-// Helper function to find index of a string in a slice
-func indexOf(slice []string, item string) int {
-	for i, s := range slice {
-		if s == item {
-			return i
-		}
-	}
-	return -1
 }

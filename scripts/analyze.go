@@ -44,8 +44,8 @@ func Analyze(command ...string) error {
 
 	// Suggest variables for string tokens
 	iterator, err = lexer.Tokenise(nil, cmdStr)
-	if iterator == nil {
-		return fmt.Errorf("failed to tokenize command for variable suggestion")
+	if err != nil {
+		return fmt.Errorf("failed to tokenize command for variable suggestion: %w", err)
 	}
 	var suggestions []string
 	varCounters := map[string]int{"string": 0, "number": 0, "variable": 0}

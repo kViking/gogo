@@ -21,8 +21,8 @@ DisableWelcomePage=no
 ; Main executable
 Source: "GoGoGadget.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "GoGoGadget.ps1"; DestDir: "{app}"; Flags: ignoreversion
-Source: "user_scripts.json"; DestDir: "{app}"; Flags: onlyifdoesntexist
-Source: "settings.json"; DestDir: "{app}"; Flags: onlyifdoesntexist
+Source: "user_scripts.json"; DestDir: "{userappdata}\GoGoGadget"; Flags: onlyifdoesntexist
+Source: "settings.json"; DestDir: "{userappdata}\GoGoGadget"; Flags: onlyifdoesntexist
 ; Installation helper scripts
 Source: "install-profile.ps1"; DestDir: "{tmp}"; Flags: deleteafterinstall
 Source: "uninstall-profile.ps1"; DestDir: "{tmp}"; Flags: deleteafterinstall

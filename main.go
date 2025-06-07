@@ -15,51 +15,29 @@ type Settings struct {
 	FirstRun bool `json:"firstRun"`
 }
 
+// getSettingsPath returns the user-writable path for settings.json
+func getSettingsPath() string {
+	dir, err := os.UserConfigDir()
+	if err != nil {
+		// fallback to home dir
+		dir, _ = os.UserHomeDir()
+	}
+	dir = filepath.Join(dir, "GoGoGadget")
+	_ = os.MkdirAll(dir, 0755)
+	return filepath.Join(dir, "settings.json")
+}
+
 // checkFirstRun checks if this is the first time the program is run
 // and displays a warning message if it is
 func checkFirstRun() {
-	// First try the current directory
-	cwdSettings := "settings.json"
-	execDirSettings := ""
-	settings := Settings{
-		FirstRun: true, // Default to true unless we find a settings file
-	}
-
-	// Check if settings exists in current directory
-	if _, err := os.Stat(cwdSettings); err == nil {
-		// Settings file exists in current directory, read it
-		data, err := os.ReadFile(cwdSettings)
+	settingsPath := getSettingsPath()
+	settings := Settings{FirstRun: true}
+	if _, err := os.Stat(settingsPath); err == nil {
+		data, err := os.ReadFile(settingsPath)
 		if err == nil && len(data) > 0 {
-			// Successfully read the file and it's not empty
-			if err := json.Unmarshal(data, &settings); err != nil {
-				// If we can't unmarshal, use default settings (FirstRun = true)
-			}
-		}
-	} else {
-		// Get the executable's directory path for checking there
-		execPath, err := os.Executable()
-		if err != nil {
-			// Can't find executable path, use default settings
-			// Already set FirstRun = true above
-		} else {
-			execDir := filepath.Dir(execPath)
-			execDirSettings = filepath.Join(execDir, "settings.json")
-
-			// Check if settings file exists in executable directory
-			if _, err := os.Stat(execDirSettings); err == nil {
-				// Settings file exists in executable directory, read it
-				data, err := os.ReadFile(execDirSettings)
-				if err == nil && len(data) > 0 {
-					// Successfully read the file and it's not empty
-					if err := json.Unmarshal(data, &settings); err != nil {
-						// If we can't unmarshal, use default settings (FirstRun = true)
-					}
-				}
-			}
+			_ = json.Unmarshal(data, &settings)
 		}
 	}
-
-	// Check if this is the first run (after either creating or reading settings)
 	if settings.FirstRun {
 		scripts.ShowFirstRunMessage()
 	}

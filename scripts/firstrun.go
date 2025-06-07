@@ -18,55 +18,29 @@ type Settings struct {
 	FirstRun bool `json:"firstRun"`
 }
 
+// getSettingsPath returns the user-writable path for settings.json
+func getSettingsPath() string {
+	dir, err := os.UserConfigDir()
+	if err != nil {
+		// fallback to home dir
+		dir, _ = os.UserHomeDir()
+	}
+	dir = filepath.Join(dir, "GoGoGadget")
+	_ = os.MkdirAll(dir, 0755)
+	return filepath.Join(dir, "settings.json")
+}
+
 // updateSettingsFile updates the settings.json file to mark firstRun as false
 func updateSettingsFile() {
-	// First try the current directory
-	cwdSettings := "settings.json"
-	execDirSettings := ""
-
-	// Check if settings exists in current directory
-	if _, err := os.Stat(cwdSettings); err != nil {
-		// Get the executable's directory path
-		execPath, err := os.Executable()
-		if err != nil {
-			fmt.Println("Error finding executable path:", err)
-			return
-		}
-		execDir := filepath.Dir(execPath)
-
-		// Define settings file path relative to the executable
-		execDirSettings = filepath.Join(execDir, "settings.json")
-
-		// Check if it exists in executable directory
-		if _, err := os.Stat(execDirSettings); err == nil {
-			cwdSettings = "" // Only use executable directory
-		}
-	}
-
-	// Create settings with firstRun set to false
-	settings := Settings{
-		FirstRun: false,
-	}
-
-	// Marshal settings to JSON
+	settingsPath := getSettingsPath()
+	settings := Settings{FirstRun: false}
 	data, err := json.MarshalIndent(settings, "", "  ")
 	if err != nil {
 		fmt.Println("Error marshaling settings:", err)
 		return
 	}
-
-	// Try to write to current directory if the file exists there
-	if cwdSettings != "" {
-		if err := os.WriteFile(cwdSettings, data, 0644); err != nil {
-			fmt.Println("Error writing settings file to current directory:", err)
-		}
-	}
-
-	// Also try to write to executable directory if the file exists there
-	if execDirSettings != "" {
-		if err := os.WriteFile(execDirSettings, data, 0644); err != nil {
-			fmt.Println("Error writing settings file to executable directory:", err)
-		}
+	if err := os.WriteFile(settingsPath, data, 0644); err != nil {
+		fmt.Println("Error writing settings file:", err)
 	}
 }
 
