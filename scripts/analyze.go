@@ -72,21 +72,20 @@ func Analyze(command ...string) error {
 		cmdStr = strings.TrimSpace(input)
 	}
 
+	// Define highlightColor and descColor at the top of the function so they are available everywhere
+	highlightColor := color.New(color.FgHiYellow, color.Bold).SprintFunc()
+	descColor := color.New(color.FgCyan).SprintFunc()
+
 	// Use PowerShell AST to get parameter-value pairs
 	psScript := fmt.Sprintf(`
 $ast = [System.Management.Automation.Language.Parser]::ParseInput('%s', [ref]$null, [ref]$null)
 $cmdAsts = $ast.FindAll({$args[0] -is [System.Management.Automation.Language.CommandAst]}, $true)
-if ($cmdAsts.Count -eq 0) {
-    '[]'
-} else {
-    @($cmdAsts | ForEach-Object {
-        $cmd = $_
-        [PSCustomObject]@{
-            CommandName = $cmd.CommandElements[0].Value
-            Elements = $cmd.CommandElements | Select-Object @{n='Type';e={ $_.GetType().Name }}, @{n='Text';e={ $_.ToString() }}
-        }
-    }) | ConvertTo-Json -Compress -Depth 5
-}
+@($cmdAsts | ForEach-Object {
+    [PSCustomObject]@{
+        CommandName = $_.CommandElements[0].Value
+        Elements = $_.CommandElements | Select-Object @{n='Type';e={ $_.GetType().Name }}, @{n='Text';e={ $_.ToString() }}
+    }
+}) | ConvertTo-Json -Compress -Depth 5
 `, strings.ReplaceAll(cmdStr, "'", "''"))
 	cmd := exec.Command("pwsh", "-NoProfile", "-Command", psScript)
 
@@ -125,93 +124,114 @@ if ($cmdAsts.Count -eq 0) {
 		fmt.Fprintln(os.Stderr, "No command AST found.")
 		return fmt.Errorf("no command AST found")
 	}
-	cmdAst := cmdResults[0]
-	astTokens := cmdAst.Elements
+
+	// Print the user's original command, using the custom highlighter
+	fmt.Println(color.New(color.FgGreen, color.Bold).Sprint("\nOriginal command:"))
+	var origHighlighted []string
+	ast := cmdResults[0].Elements
+	for i := 0; i < len(ast); i++ {
+		t := ast[i]
+		if t.Type == "StringConstantExpressionAst" && isKnownCommand(t.Text) {
+			origHighlighted = append(origHighlighted, highlightColor(t.Text))
+		} else if t.Type == "CommandParameterAst" {
+			origHighlighted = append(origHighlighted, color.New(color.FgCyan, color.Bold).Sprint(t.Text))
+		} else if t.Type == "StringConstantExpressionAst" {
+			origHighlighted = append(origHighlighted, color.New(color.FgHiWhite).Sprint(t.Text))
+		} else {
+			origHighlighted = append(origHighlighted, t.Text)
+		}
+	}
+	fmt.Println(strings.Join(origHighlighted, " "))
 
 	var highlighted []string
 	var descriptions []string
-	highlightColor := color.New(color.FgHiYellow, color.Bold).SprintFunc()
-	descColor := color.New(color.FgCyan).SprintFunc()
 	varCounters := map[string]int{"string": 0, "path": 0}
 
-	// Find the first element that is a command name (Type from GetType().Name and isKnownCommand)
-	commandIdx := -1
-	for i, t := range astTokens {
-		if t.Type == "StringConstantExpressionAst" && isKnownCommand(t.Text) {
-			commandIdx = i
-			break
-		}
-	}
-
-	for i := 0; i < len(astTokens); i++ {
-		t := astTokens[i]
-		if i == commandIdx {
-			// This is the command name, print as-is
-			highlighted = append(highlighted, t.Text)
-			continue
-		}
-		// Only use the string Type (from GetType().Name) for all logic
-		if t.Type == "StringConstantExpressionAst" {
-			prevIsParam := false
-			for j := i - 1; j >= 0; j-- {
-				if astTokens[j].Type == "CommandAst" {
-					continue
-				}
-				if astTokens[j].Type == "CommandParameterAst" {
-					prevIsParam = true
-				}
+	// For each command found in the AST, process and reconstruct the string for highlighting
+	for _, cmdAst := range cmdResults {
+		astTokens := cmdAst.Elements
+		commandIdx := -1
+		for i, t := range astTokens {
+			if t.Type == "StringConstantExpressionAst" && isKnownCommand(t.Text) {
+				commandIdx = i
 				break
 			}
-			if !prevIsParam && !isKnownCommand(t.Text) {
-				varCounters["string"]++
-				var varName string
-				if varCounters["string"] == 1 {
-					varName = "string"
-				} else {
-					varName = fmt.Sprintf("string%d", varCounters["string"])
-				}
-				highlighted = append(highlighted, highlightColor("{{"+varName+"}}"))
-				descriptions = append(descriptions, fmt.Sprintf("%s %s", highlightColor(varName), descColor(fmt.Sprintf("\u2190 was '%s', positional argument (type: %s)", t.Text, t.Type))))
+		}
+
+		for i := 0; i < len(astTokens); i++ {
+			t := astTokens[i]
+			if i == commandIdx {
+				// This is the command name, print as-is
+				highlighted = append(highlighted, t.Text)
 				continue
 			}
-		}
-		if t.Type != "CommandParameterAst" {
-			if t.Type != "PipelineAst" && t.Type != "ScriptBlockAst" && t.Type != "StatementBlockAst" && t.Type != "CommandExpressionAst" {
-				highlighted = append(highlighted, t.Text)
-			}
-			continue
-		}
-		param := t.Text
-		isValue := false
-		if i+1 < len(astTokens) {
-			val := astTokens[i+1]
-			isValue = val.Type != "CommandParameterAst" && val.Type != "CommandAst" && val.Type != "PipelineAst" && val.Type != "ScriptBlockAst" && val.Type != "StatementBlockAst" && val.Type != "CommandExpressionAst" && val.Type != "Keyword" && val.Type != "StatementSeparatorAst" && val.Text != "|" && !strings.HasSuffix(val.Text, "-Object") && !isKnownCommand(val.Text)
-			if isValue {
-				paramLower := strings.ToLower(strings.TrimLeft(param, "-"))
-				var varName string
-				if strings.Contains(paramLower, "path") || strings.Contains(paramLower, "file") || strings.Contains(paramLower, "dir") || isLikelyPath(val.Text) {
-					varCounters["path"]++
-					if varCounters["path"] == 1 {
-						varName = "path"
-					} else {
-						varName = fmt.Sprintf("path%d", varCounters["path"])
+			// Only use the string Type (from GetType().Name) for all logic
+			if t.Type == "StringConstantExpressionAst" {
+				prevIsParam := false
+				for j := i - 1; j >= 0; j-- {
+					if astTokens[j].Type == "CommandAst" {
+						continue
 					}
-				} else {
+					if astTokens[j].Type == "CommandParameterAst" {
+						prevIsParam = true
+					}
+					break
+				}
+				if !prevIsParam && !isKnownCommand(t.Text) {
 					varCounters["string"]++
+					var varName string
 					if varCounters["string"] == 1 {
 						varName = "string"
 					} else {
 						varName = fmt.Sprintf("string%d", varCounters["string"])
 					}
+					highlighted = append(highlighted, highlightColor("{{"+varName+"}}"))
+					descriptions = append(descriptions, fmt.Sprintf("%s %s", highlightColor(varName), descColor(fmt.Sprintf("\u2190 was '%s', positional argument (type: %s)", t.Text, t.Type))))
+					continue
 				}
-				highlighted = append(highlighted, param+" "+highlightColor("{{"+varName+"}}"))
-				descriptions = append(descriptions, fmt.Sprintf("%s %s", highlightColor(varName), descColor(fmt.Sprintf("\u2190 was '%s', value for %s (type: %s)", val.Text, param, val.Type))))
-				i++ // skip value
+			}
+			if t.Type != "CommandParameterAst" {
+				if t.Type != "PipelineAst" && t.Type != "ScriptBlockAst" && t.Type != "StatementBlockAst" && t.Type != "CommandExpressionAst" {
+					highlighted = append(highlighted, t.Text)
+				}
 				continue
 			}
+			param := t.Text
+			isValue := false
+			if i+1 < len(astTokens) {
+				val := astTokens[i+1]
+				isValue = val.Type != "CommandParameterAst" && val.Type != "CommandAst" && val.Type != "PipelineAst" && val.Type != "ScriptBlockAst" && val.Type != "StatementBlockAst" && val.Type != "CommandExpressionAst" && val.Type != "Keyword" && val.Type != "StatementSeparatorAst" && val.Text != "|" && !strings.HasSuffix(val.Text, "-Object") && !isKnownCommand(val.Text)
+				if isValue {
+					paramLower := strings.ToLower(strings.TrimLeft(param, "-"))
+					var varName string
+					if strings.Contains(paramLower, "path") || strings.Contains(paramLower, "file") || strings.Contains(paramLower, "dir") || isLikelyPath(val.Text) {
+						varCounters["path"]++
+						if varCounters["path"] == 1 {
+							varName = "path"
+						} else {
+							varName = fmt.Sprintf("path%d", varCounters["path"])
+						}
+					} else {
+						varCounters["string"]++
+						if varCounters["string"] == 1 {
+							varName = "string"
+						} else {
+							varName = fmt.Sprintf("string%d", varCounters["string"])
+						}
+					}
+					highlighted = append(highlighted, param+" "+highlightColor("{{"+varName+"}}"))
+					descriptions = append(descriptions, fmt.Sprintf("%s %s", highlightColor(varName), descColor(fmt.Sprintf("\u2190 was '%s', value for %s (type: %s)", val.Text, param, val.Type))))
+					i++ // skip value
+					continue
+				}
+			}
+			highlighted = append(highlighted, highlightColor(param))
+			descriptions = append(descriptions, fmt.Sprintf("%s %s", highlightColor(param), descColor("\u2190 flag parameter (no value) or command name follows")))
 		}
-		highlighted = append(highlighted, highlightColor(param))
-		descriptions = append(descriptions, fmt.Sprintf("%s %s", highlightColor(param), descColor("\u2190 flag parameter (no value) or command name follows")))
+		// Add a separator between commands if there are multiple
+		if len(cmdResults) > 1 {
+			highlighted = append(highlighted, color.New(color.FgMagenta, color.Bold).Sprint("|"))
+		}
 	}
 
 	fmt.Println(color.New(color.FgGreen, color.Bold).Sprint("\nSuggested parameterization:"))
