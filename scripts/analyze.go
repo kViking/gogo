@@ -143,13 +143,13 @@ $cmdAsts = $ast.FindAll({$args[0] -is [System.Management.Automation.Language.Com
 	}
 	fmt.Println(strings.Join(origHighlighted, " "))
 
-	var highlighted []string
 	var descriptions []string
 	varCounters := map[string]int{"string": 0, "path": 0}
 
 	// For each command found in the AST, process and reconstruct the string for highlighting
 	for _, cmdAst := range cmdResults {
 		astTokens := cmdAst.Elements
+		var cmdHighlighted []string
 		commandIdx := -1
 		for i, t := range astTokens {
 			if t.Type == "StringConstantExpressionAst" && isKnownCommand(t.Text) {
@@ -161,11 +161,9 @@ $cmdAsts = $ast.FindAll({$args[0] -is [System.Management.Automation.Language.Com
 		for i := 0; i < len(astTokens); i++ {
 			t := astTokens[i]
 			if i == commandIdx {
-				// This is the command name, print as-is
-				highlighted = append(highlighted, t.Text)
+				cmdHighlighted = append(cmdHighlighted, t.Text)
 				continue
 			}
-			// Only use the string Type (from GetType().Name) for all logic
 			if t.Type == "StringConstantExpressionAst" {
 				prevIsParam := false
 				for j := i - 1; j >= 0; j-- {
@@ -185,14 +183,14 @@ $cmdAsts = $ast.FindAll({$args[0] -is [System.Management.Automation.Language.Com
 					} else {
 						varName = fmt.Sprintf("string%d", varCounters["string"])
 					}
-					highlighted = append(highlighted, highlightColor("{{"+varName+"}}"))
+					cmdHighlighted = append(cmdHighlighted, highlightColor("{{"+varName+"}}"))
 					descriptions = append(descriptions, fmt.Sprintf("%s %s", highlightColor(varName), descColor(fmt.Sprintf("\u2190 was '%s', positional argument (type: %s)", t.Text, t.Type))))
 					continue
 				}
 			}
 			if t.Type != "CommandParameterAst" {
-				if t.Type != "PipelineAst" && t.Type != "ScriptBlockAst" && t.Type != "StatementBlockAst" && t.Type != "CommandExpressionAst" {
-					highlighted = append(highlighted, t.Text)
+				if t.Type != "PipelineAst" && t.Type != "ScriptBlockAst" && t.Type != "StatementBlockAst" && t.Type != "CommandExpressionAst" && t.Type != "ParenExpressionAst" {
+					cmdHighlighted = append(cmdHighlighted, t.Text)
 				}
 				continue
 			}
@@ -200,7 +198,7 @@ $cmdAsts = $ast.FindAll({$args[0] -is [System.Management.Automation.Language.Com
 			isValue := false
 			if i+1 < len(astTokens) {
 				val := astTokens[i+1]
-				isValue = val.Type != "CommandParameterAst" && val.Type != "CommandAst" && val.Type != "PipelineAst" && val.Type != "ScriptBlockAst" && val.Type != "StatementBlockAst" && val.Type != "CommandExpressionAst" && val.Type != "Keyword" && val.Type != "StatementSeparatorAst" && val.Text != "|" && !strings.HasSuffix(val.Text, "-Object") && !isKnownCommand(val.Text)
+				isValue = val.Type != "CommandParameterAst" && val.Type != "CommandAst" && val.Type != "PipelineAst" && val.Type != "ScriptBlockAst" && val.Type != "StatementBlockAst" && val.Type != "CommandExpressionAst" && val.Type != "ParenExpressionAst" && val.Type != "Keyword" && val.Type != "StatementSeparatorAst" && val.Text != "|" && !strings.HasSuffix(val.Text, "-Object") && !isKnownCommand(val.Text)
 				if isValue {
 					paramLower := strings.ToLower(strings.TrimLeft(param, "-"))
 					var varName string
@@ -219,23 +217,18 @@ $cmdAsts = $ast.FindAll({$args[0] -is [System.Management.Automation.Language.Com
 							varName = fmt.Sprintf("string%d", varCounters["string"])
 						}
 					}
-					highlighted = append(highlighted, param+" "+highlightColor("{{"+varName+"}}"))
+					cmdHighlighted = append(cmdHighlighted, param+" "+highlightColor("{{"+varName+"}}"))
 					descriptions = append(descriptions, fmt.Sprintf("%s %s", highlightColor(varName), descColor(fmt.Sprintf("\u2190 was '%s', value for %s (type: %s)", val.Text, param, val.Type))))
 					i++ // skip value
 					continue
 				}
 			}
-			highlighted = append(highlighted, highlightColor(param))
+			cmdHighlighted = append(cmdHighlighted, highlightColor(param))
 			descriptions = append(descriptions, fmt.Sprintf("%s %s", highlightColor(param), descColor("\u2190 flag parameter (no value) or command name follows")))
 		}
-		// Add a separator between commands if there are multiple
-		if len(cmdResults) > 1 {
-			highlighted = append(highlighted, color.New(color.FgMagenta, color.Bold).Sprint("|"))
-		}
+		fmt.Println(color.New(color.FgGreen, color.Bold).Sprint("\nSuggested parameterization:"))
+		fmt.Println(strings.Join(cmdHighlighted, " "))
 	}
-
-	fmt.Println(color.New(color.FgGreen, color.Bold).Sprint("\nSuggested parameterization:"))
-	fmt.Println(strings.Join(highlighted, " "))
 
 	if len(descriptions) > 0 {
 		fmt.Println(color.New(color.FgGreen, color.Bold).Sprint("\nDescriptions of highlighted sections:"))
