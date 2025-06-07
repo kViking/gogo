@@ -76,16 +76,23 @@ func Analyze(command ...string) error {
 	highlightColor := color.New(color.FgHiYellow, color.Bold).SprintFunc()
 	descColor := color.New(color.FgCyan).SprintFunc()
 
-	// Use PowerShell AST to get parameter-value pairs
+	// Use PowerShell AST and Tokenizer to get full token list and AST analysis
 	psScript := fmt.Sprintf(`
-$ast = [System.Management.Automation.Language.Parser]::ParseInput('%s', [ref]$null, [ref]$null)
+$source = @'
+%s
+'@
+$tokens = [System.Management.Automation.PSParser]::Tokenize($source, [ref]$null)
+$ast = [System.Management.Automation.Language.Parser]::ParseInput($source, [ref]$null, [ref]$null)
 $cmdAsts = $ast.FindAll({$args[0] -is [System.Management.Automation.Language.CommandAst]}, $true)
-@($cmdAsts | ForEach-Object {
-    [PSCustomObject]@{
-        CommandName = $_.CommandElements[0].Value
-        Elements = $_.CommandElements | Select-Object @{n='Type';e={ $_.GetType().Name }}, @{n='Text';e={ $_.ToString() }}
-    }
-}) | ConvertTo-Json -Compress -Depth 5
+[PSCustomObject]@{
+    Tokens = $tokens | Select-Object Type, Content
+    Commands = @($cmdAsts | ForEach-Object {
+        [PSCustomObject]@{
+            CommandName = $_.CommandElements[0].Value
+            Elements = $_.CommandElements | Select-Object @{n='Type';e={ $_.GetType().Name }}, @{n='Text';e={ $_.ToString() }}
+        }
+    })
+} | ConvertTo-Json -Compress -Depth 5
 `, strings.ReplaceAll(cmdStr, "'", "''"))
 	cmd := exec.Command("pwsh", "-NoProfile", "-Command", psScript)
 
@@ -101,11 +108,11 @@ $cmdAsts = $ast.FindAll({$args[0] -is [System.Management.Automation.Language.Com
 		return fmt.Errorf("PowerShell AST output was empty")
 	}
 
-	// If the output is a single object (starts with '{'), wrap it in a list for robust parsing
-	if strings.HasPrefix(jsonOut, "{") {
-		jsonOut = "[" + jsonOut + "]"
+	// Parse the combined output
+	type Token struct {
+		Type    string `json:"Type"`
+		Content string `json:"Content"`
 	}
-
 	type CommandAstResult struct {
 		CommandName string `json:"CommandName"`
 		Elements    []struct {
@@ -113,41 +120,46 @@ $cmdAsts = $ast.FindAll({$args[0] -is [System.Management.Automation.Language.Com
 			Text string `json:"Text"`
 		} `json:"Elements"`
 	}
-
-	var cmdResults []CommandAstResult
-	if err := json.Unmarshal([]byte(jsonOut), &cmdResults); err != nil {
-		// Print error and return, but do not print usage/help
-		fmt.Fprintf(os.Stderr, "Error: failed to parse PowerShell AST output: %v\nRaw output: %s\n", err, jsonOut)
-		return fmt.Errorf("failed to parse PowerShell AST output")
+	type CombinedResult struct {
+		Tokens   []Token            `json:"Tokens"`
+		Commands []CommandAstResult `json:"Commands"`
 	}
-	if len(cmdResults) == 0 {
-		fmt.Fprintln(os.Stderr, "No command AST found.")
-		return fmt.Errorf("no command AST found")
+	var result CombinedResult
+	if err := json.Unmarshal([]byte(jsonOut), &result); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: failed to parse PowerShell output: %v\nRaw output: %s\n", err, jsonOut)
+		return fmt.Errorf("failed to parse PowerShell output")
 	}
 
-	// Print the user's original command, using the custom highlighter
+	// Build a set of AST argument values for highlighting
+	astArgs := make(map[string]struct{})
+	for _, cmd := range result.Commands {
+		for _, el := range cmd.Elements {
+			if el.Type == "StringConstantExpressionAst" && !isKnownCommand(el.Text) {
+				astArgs[el.Text] = struct{}{}
+			}
+		}
+	}
+
+	// Print the user's original command, syntax highlighted using the tokenizer and AST
 	fmt.Println(color.New(color.FgGreen, color.Bold).Sprint("\nOriginal command:"))
 	var origHighlighted []string
-	ast := cmdResults[0].Elements
-	for i := 0; i < len(ast); i++ {
-		t := ast[i]
-		if t.Type == "StringConstantExpressionAst" && isKnownCommand(t.Text) {
-			origHighlighted = append(origHighlighted, highlightColor(t.Text))
-		} else if t.Type == "CommandParameterAst" {
-			origHighlighted = append(origHighlighted, color.New(color.FgCyan, color.Bold).Sprint(t.Text))
-		} else if t.Type == "StringConstantExpressionAst" {
-			origHighlighted = append(origHighlighted, color.New(color.FgHiWhite).Sprint(t.Text))
+	for _, t := range result.Tokens {
+		if _, isArg := astArgs[t.Content]; isArg {
+			origHighlighted = append(origHighlighted, highlightColor("{{"+t.Content+"}}"))
+		} else if isKnownCommand(t.Content) {
+			origHighlighted = append(origHighlighted, highlightColor(t.Content))
+		} else if t.Type == "CommandParameter" {
+			origHighlighted = append(origHighlighted, color.New(color.FgCyan, color.Bold).Sprint(t.Content))
 		} else {
-			origHighlighted = append(origHighlighted, t.Text)
+			origHighlighted = append(origHighlighted, t.Content)
 		}
 	}
 	fmt.Println(strings.Join(origHighlighted, " "))
 
+	// Print parameterization for each command as before
 	var descriptions []string
 	varCounters := map[string]int{"string": 0, "path": 0}
-
-	// For each command found in the AST, process and reconstruct the string for highlighting
-	for _, cmdAst := range cmdResults {
+	for _, cmdAst := range result.Commands {
 		astTokens := cmdAst.Elements
 		var cmdHighlighted []string
 		commandIdx := -1
@@ -157,11 +169,10 @@ $cmdAsts = $ast.FindAll({$args[0] -is [System.Management.Automation.Language.Com
 				break
 			}
 		}
-
 		for i := 0; i < len(astTokens); i++ {
 			t := astTokens[i]
 			if i == commandIdx {
-				cmdHighlighted = append(cmdHighlighted, t.Text)
+				cmdHighlighted = append(cmdHighlighted, highlightColor(t.Text))
 				continue
 			}
 			if t.Type == "StringConstantExpressionAst" {
@@ -187,44 +198,14 @@ $cmdAsts = $ast.FindAll({$args[0] -is [System.Management.Automation.Language.Com
 					descriptions = append(descriptions, fmt.Sprintf("%s %s", highlightColor(varName), descColor(fmt.Sprintf("\u2190 was '%s', positional argument (type: %s)", t.Text, t.Type))))
 					continue
 				}
-			}
-			if t.Type != "CommandParameterAst" {
-				if t.Type != "PipelineAst" && t.Type != "ScriptBlockAst" && t.Type != "StatementBlockAst" && t.Type != "CommandExpressionAst" && t.Type != "ParenExpressionAst" {
-					cmdHighlighted = append(cmdHighlighted, t.Text)
-				}
+				cmdHighlighted = append(cmdHighlighted, color.New(color.FgHiWhite).Sprint(t.Text))
 				continue
 			}
-			param := t.Text
-			isValue := false
-			if i+1 < len(astTokens) {
-				val := astTokens[i+1]
-				isValue = val.Type != "CommandParameterAst" && val.Type != "CommandAst" && val.Type != "PipelineAst" && val.Type != "ScriptBlockAst" && val.Type != "StatementBlockAst" && val.Type != "CommandExpressionAst" && val.Type != "ParenExpressionAst" && val.Type != "Keyword" && val.Type != "StatementSeparatorAst" && val.Text != "|" && !strings.HasSuffix(val.Text, "-Object") && !isKnownCommand(val.Text)
-				if isValue {
-					paramLower := strings.ToLower(strings.TrimLeft(param, "-"))
-					var varName string
-					if strings.Contains(paramLower, "path") || strings.Contains(paramLower, "file") || strings.Contains(paramLower, "dir") || isLikelyPath(val.Text) {
-						varCounters["path"]++
-						if varCounters["path"] == 1 {
-							varName = "path"
-						} else {
-							varName = fmt.Sprintf("path%d", varCounters["path"])
-						}
-					} else {
-						varCounters["string"]++
-						if varCounters["string"] == 1 {
-							varName = "string"
-						} else {
-							varName = fmt.Sprintf("string%d", varCounters["string"])
-						}
-					}
-					cmdHighlighted = append(cmdHighlighted, param+" "+highlightColor("{{"+varName+"}}"))
-					descriptions = append(descriptions, fmt.Sprintf("%s %s", highlightColor(varName), descColor(fmt.Sprintf("\u2190 was '%s', value for %s (type: %s)", val.Text, param, val.Type))))
-					i++ // skip value
-					continue
-				}
+			if t.Type == "CommandParameterAst" {
+				cmdHighlighted = append(cmdHighlighted, color.New(color.FgCyan, color.Bold).Sprint(t.Text))
+				continue
 			}
-			cmdHighlighted = append(cmdHighlighted, highlightColor(param))
-			descriptions = append(descriptions, fmt.Sprintf("%s %s", highlightColor(param), descColor("\u2190 flag parameter (no value) or command name follows")))
+			cmdHighlighted = append(cmdHighlighted, t.Text)
 		}
 		fmt.Println(color.New(color.FgGreen, color.Bold).Sprint("\nSuggested parameterization:"))
 		fmt.Println(strings.Join(cmdHighlighted, " "))
