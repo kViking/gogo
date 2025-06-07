@@ -78,6 +78,7 @@ func Analyze(command ...string) error {
 
 	// Use PowerShell AST and Tokenizer to get full token list and AST analysis
 	psScript := fmt.Sprintf(`
+$ErrorActionPreference = 'Stop'
 $source = @'
 %s
 '@
@@ -85,27 +86,37 @@ $tokens = [System.Management.Automation.PSParser]::Tokenize($source, [ref]$null)
 $ast = [System.Management.Automation.Language.Parser]::ParseInput($source, [ref]$null, [ref]$null)
 $cmdAsts = $ast.FindAll({$args[0] -is [System.Management.Automation.Language.CommandAst]}, $true)
 [PSCustomObject]@{
-    Tokens = $tokens | Select-Object Type, Content
+    Tokens = @($tokens | Select-Object Type, Content)
     Commands = @($cmdAsts | ForEach-Object {
         [PSCustomObject]@{
-            CommandName = $_.CommandElements[0].Value
-            Elements = $_.CommandElements | Select-Object @{n='Type';e={ $_.GetType().Name }}, @{n='Text';e={ $_.ToString() }}
+            CommandName = if ($_.CommandElements.Count -gt 0) { $_.CommandElements[0].Value } else { $null }
+            Elements = @($_.CommandElements | Select-Object @{n='Type';e={ $_.GetType().Name }}, @{n='Text';e={ $_.ToString() }})
         }
     })
-} | ConvertTo-Json -Compress -Depth 5
+} | ConvertTo-Json -Depth 5
 `, strings.ReplaceAll(cmdStr, "'", "''"))
 	cmd := exec.Command("pwsh", "-NoProfile", "-Command", psScript)
 
 	var out bytes.Buffer
+	var stderr bytes.Buffer
 	cmd.Stdout = &out
+	cmd.Stderr = &stderr
 	err := cmd.Run()
 	if err != nil {
+		fmt.Fprintf(os.Stderr, "PowerShell error output: %s\n", stderr.String())
 		return fmt.Errorf("failed to run PowerShell: %w", err)
 	}
 
 	jsonOut := strings.TrimSpace(out.String())
 	if jsonOut == "" {
+		fmt.Fprintf(os.Stderr, "PowerShell error output: %s\n", stderr.String())
 		return fmt.Errorf("PowerShell AST output was empty")
+	}
+
+	// Check if output is valid JSON (starts with '{' and ends with '}')
+	if !strings.HasPrefix(jsonOut, "{") || !strings.HasSuffix(jsonOut, "}") {
+		fmt.Fprintf(os.Stderr, "PowerShell output was not valid JSON. Raw output:\n%s\n", jsonOut)
+		return fmt.Errorf("PowerShell output was not valid JSON")
 	}
 
 	// Parse the combined output
