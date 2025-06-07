@@ -92,3 +92,10 @@ Use 'GoGoGadget add' to create a new shortcut, 'GoGoGadget list' to see all, or 
 		os.Exit(1)
 	}
 }
+
+// =====================  ATTENTION!  =====================
+// =                                                     =
+// =  fix the settings.json permissions so it can be      =
+// =  written to by GoGoGadget                           =
+// =                                                     =
+// =======================================================
