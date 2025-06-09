@@ -125,7 +125,7 @@ func Analyze(command ...string) error {
 				// Not a path: suggest each Name token in the buffer
 				for _, t := range pathBuffer {
 					if t.Type == chroma.Name {
-						if !checker.IsKnownCommand(t.Value) {
+						if !checker.IsKnownCommand(t.Value) && !strings.HasPrefix(t.Value, "-") {
 							varCounters["string"]++
 							varName := "string"
 							if varCounters["string"] > 1 {
@@ -143,7 +143,6 @@ func Analyze(command ...string) error {
 	// Start spinner for progress indication
 	spinner := GetSpinner("Analyzing command...")
 	spinner.Start()
-	defer spinner.Stop()
 
 	for i, token := range tokens {
 		if token.Type == chroma.Name || token.Type == chroma.Punctuation {
@@ -187,6 +186,8 @@ func Analyze(command ...string) error {
 		}
 	}
 	flushPathBuffer()
+
+	spinner.Stop()
 
 	if len(suggestions) > 0 {
 		fmt.Println(color.New(color.FgGreen, color.Bold).Sprint("\nSuggested variables:"))
