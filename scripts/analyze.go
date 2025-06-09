@@ -100,21 +100,24 @@ func Analyze(command ...string) error {
 	monokai := styles.Get("monokai")
 	var patchedStyle *chroma.Style
 	if monokai != nil {
-		// Use a fallback: manually copy the most important style entries by using the style's Builder API
 		entries := chroma.StyleEntries{}
-		// Manually map the most important token types for PowerShell highlighting
-		entries[chroma.Keyword] = "bold #f92672"
-		entries[chroma.NameBuiltin] = "bold #f92672"
-		entries[chroma.NameFunction] = "bold #f92672"
-		entries[chroma.Name] = "#a6e22e"
-		entries[chroma.LiteralString] = "#e6db74"
-		entries[chroma.LiteralNumber] = "#ae81ff"
-		entries[chroma.NameVariable] = "#fd971f"
-		entries[chroma.Punctuation] = "#f8f8f2"
-		entries[chroma.Text] = "#f8f8f2"
-		entries[chroma.Operator] = "#f8f8f2"
-		entries[chroma.Comment] = "italic #75715e"
-		// Use the rest of monokai for fallback
+		// List the token types you want to patch
+		typesToPatch := []chroma.TokenType{
+			chroma.Keyword,
+			chroma.NameBuiltin,
+			chroma.NameFunction,
+			chroma.Name,
+			chroma.LiteralString,
+			chroma.LiteralNumber,
+			chroma.NameVariable,
+			chroma.Punctuation,
+			chroma.Text,
+			chroma.Operator,
+			chroma.Comment,
+		}
+		for _, t := range typesToPatch {
+			entries[t] = monokai.Get(t).String()
+		}
 		patchedStyle = chroma.MustNewStyle("monokai-patched", entries)
 	} else {
 		patchedStyle = styles.Fallback
