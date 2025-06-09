@@ -205,6 +205,7 @@ func Analyze(command ...string) error {
 	fmt.Println()
 
 	if len(suggestionReplacements) > 0 {
+		fmt.Println() // Blank line between commands
 		fmt.Println(color.New(color.FgGreen, color.Bold).Sprint("Parameterized version (syntax highlighted):"))
 		if err := quick.Highlight(os.Stdout, paramStr, "powershell", "terminal16m", "native"); err != nil {
 			return fmt.Errorf("failed to highlight parameterized command: %w", err)
@@ -213,12 +214,13 @@ func Analyze(command ...string) error {
 	}
 
 	if len(suggestions) > 0 {
-		fmt.Println("\nSuggested variables:")
+		fmt.Println() // Blank line before suggestions
+		fmt.Println("Suggested variables:")
 		for _, s := range suggestions {
 			fmt.Print("  ")
-			fmt.Print(color.New(color.FgHiYellow, color.Bold).Sprint(s.VarName))
-			fmt.Print(color.New(color.FgWhite, color.Bold).Sprint(" ← was "))
-			fmt.Println(color.New(color.FgCyan, color.Bold).Sprint(s.Original))
+			color.New(color.FgHiYellow, color.Bold).Printf("%s", s.VarName)
+			color.New(color.FgWhite, color.Bold).Printf(" ← was ")
+			color.New(color.FgCyan, color.Bold).Printf("%s\n", s.Original)
 		}
 	} else {
 		fmt.Println(color.New(color.FgYellow, color.Bold).Sprint("\nNo suggestions found."))
