@@ -103,7 +103,7 @@ func Analyze(command ...string) error {
 	}
 
 	// Suggest variables for string tokens using the same tokens slice
-	var suggestions []string
+	var suggestions []struct{ VarName, Original string }
 	varCounters := map[string]int{"string": 0, "number": 0, "variable": 0, "path": 0}
 	checker := GetPowerShellCommandChecker()
 
@@ -121,7 +121,7 @@ func Analyze(command ...string) error {
 				if varCounters["path"] > 1 {
 					varName = fmt.Sprintf("path%d", varCounters["path"])
 				}
-				suggestions = append(suggestions, fmt.Sprintf("%s ← was %s", color.New(color.FgHiYellow, color.Bold).Sprint(varName), color.New(color.FgCyan).Sprint(joined)))
+				suggestions = append(suggestions, struct{ VarName, Original string }{varName, joined})
 			} else {
 				// Not a path: suggest each Name token in the buffer
 				for _, t := range pathBuffer {
@@ -132,7 +132,7 @@ func Analyze(command ...string) error {
 							if varCounters["string"] > 1 {
 								varName = fmt.Sprintf("string%d", varCounters["string"])
 							}
-							suggestions = append(suggestions, fmt.Sprintf("%s ← was %s", color.New(color.FgHiYellow, color.Bold).Sprint(varName), color.New(color.FgCyan).Sprint(t.Value)))
+							suggestions = append(suggestions, struct{ VarName, Original string }{varName, t.Value})
 						}
 					}
 				}
@@ -164,7 +164,7 @@ func Analyze(command ...string) error {
 			if varCounters["string"] > 1 {
 				varName = fmt.Sprintf("string%d", varCounters["string"])
 			}
-			suggestions = append(suggestions, fmt.Sprintf("%s ← was %s", color.New(color.FgHiYellow, color.Bold).Sprint(varName), color.New(color.FgCyan).Sprint(token.Value)))
+			suggestions = append(suggestions, struct{ VarName, Original string }{varName, token.Value})
 			continue
 		}
 		if token.Type == chroma.LiteralNumber {
@@ -173,7 +173,7 @@ func Analyze(command ...string) error {
 			if varCounters["number"] > 1 {
 				varName = fmt.Sprintf("number%d", varCounters["number"])
 			}
-			suggestions = append(suggestions, fmt.Sprintf("%s ← was %s", color.New(color.FgHiYellow, color.Bold).Sprint(varName), color.New(color.FgCyan).Sprint(token.Value)))
+			suggestions = append(suggestions, struct{ VarName, Original string }{varName, token.Value})
 			continue
 		}
 		if token.Type == chroma.NameVariable {
@@ -182,7 +182,7 @@ func Analyze(command ...string) error {
 			if varCounters["variable"] > 1 {
 				varName = fmt.Sprintf("variable%d", varCounters["variable"])
 			}
-			suggestions = append(suggestions, fmt.Sprintf("%s ← was %s", color.New(color.FgHiYellow, color.Bold).Sprint(varName), color.New(color.FgCyan).Sprint(token.Value)))
+			suggestions = append(suggestions, struct{ VarName, Original string }{varName, token.Value})
 			continue
 		}
 	}
@@ -191,17 +191,8 @@ func Analyze(command ...string) error {
 	var suggestionReplacements []struct{ Original, Replacement string }
 	var paramStr = cmdStr
 	for _, s := range suggestions {
-		// Parse the suggestion string to extract the original value and the variable name
-		// Format: <var> ← was <original>
-		parts := strings.SplitN(s, "← was", 2)
-		if len(parts) == 2 {
-			varName := strings.TrimSpace(parts[0])
-			orig := strings.TrimSpace(parts[1])
-			// Remove color codes for replacement
-			origPlain := color.New().Sprint(orig)
-			paramStr = strings.Replace(paramStr, origPlain, "{{"+varName+"}}", 1)
-			suggestionReplacements = append(suggestionReplacements, struct{ Original, Replacement string }{origPlain, "{{" + varName + "}}"})
-		}
+		paramStr = strings.Replace(paramStr, s.Original, "{{"+s.VarName+"}}", 1)
+		suggestionReplacements = append(suggestionReplacements, struct{ Original, Replacement string }{s.Original, "{{" + s.VarName + "}}"})
 	}
 
 	spinner.Stop()
@@ -215,17 +206,19 @@ func Analyze(command ...string) error {
 
 	if len(suggestionReplacements) > 0 {
 		fmt.Println(color.New(color.FgGreen, color.Bold).Sprint("Parameterized version (syntax highlighted):"))
-		// Print the parameterized version in yellow for visibility
-		if err := quick.Highlight(os.Stdout, paramStr, "powershell", "terminal16m", "monokai"); err != nil {
+		if err := quick.Highlight(os.Stdout, paramStr, "powershell", "terminal16m", "native"); err != nil {
 			return fmt.Errorf("failed to highlight parameterized command: %w", err)
 		}
 		fmt.Println()
 	}
 
 	if len(suggestions) > 0 {
-		fmt.Println(color.New(color.FgHiYellow, color.Bold).Sprint("\nSuggested variables:"))
+		fmt.Println("\nSuggested variables:")
 		for _, s := range suggestions {
-			fmt.Println(color.New(color.FgHiYellow).Sprint("  ", s))
+			fmt.Print("  ")
+			fmt.Print(color.New(color.FgHiYellow, color.Bold).Sprint(s.VarName))
+			fmt.Print(color.New(color.FgWhite).Sprint(" ← was "))
+			fmt.Println(color.New(color.FgCyan).Sprint(s.Original))
 		}
 	} else {
 		fmt.Println(color.New(color.FgYellow, color.Bold).Sprint("\nNo suggestions found."))
