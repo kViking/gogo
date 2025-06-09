@@ -127,6 +127,8 @@ func Analyze(command ...string) error {
 		for _, s := range suggestions {
 			fmt.Println("  ", s)
 		}
+	} else {
+		fmt.Println(color.New(color.FgYellow, color.Bold).Sprint("\nNo suggestions found."))
 	}
 	return nil
 }

@@ -129,7 +129,7 @@ Example usage:
   GoGoGadget ` + name + ` -VAR1 value1 -VAR2 value2
 `,
 			Args: cobra.ArbitraryArgs,
-			Run:  createScriptRunFunc(name, config, varNames),
+			Run:  createScriptRunFunc(name, config),
 		}
 
 		// Add flags for each variable
@@ -143,7 +143,7 @@ Example usage:
 }
 
 // createScriptRunFunc returns a function to run the script with variables
-func createScriptRunFunc(name string, config ScriptConfig, varNames []string) func(*cobra.Command, []string) {
+func createScriptRunFunc(name string, config ScriptConfig) func(*cobra.Command, []string) {
 	return func(cmd *cobra.Command, args []string) {
 		vars := make(map[string]string)
 
@@ -195,8 +195,9 @@ func createScriptRunFunc(name string, config ScriptConfig, varNames []string) fu
 }
 
 // createVariablesListFunc returns a function to list variables for a script
-func createVariablesListFunc(name string, config ScriptConfig, varNames []string) func(*cobra.Command, []string) {
+func createVariablesListFunc(name string, config ScriptConfig) func(*cobra.Command, []string) {
 	return func(cmd *cobra.Command, args []string) {
+		varNames := extractVariables(config.Command)
 		if len(varNames) == 0 {
 			warnText.Println("This shortcut has no variables.")
 			return
@@ -208,14 +209,4 @@ func createVariablesListFunc(name string, config ScriptConfig, varNames []string
 			fmt.Printf("%s\n", desc)
 		}
 	}
-}
-
-// Helper function to find index of a string in a slice
-func indexOf(slice []string, item string) int {
-	for i, s := range slice {
-		if s == item {
-			return i
-		}
-	}
-	return -1
 }
