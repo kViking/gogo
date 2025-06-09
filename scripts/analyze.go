@@ -200,7 +200,7 @@ func Analyze(command ...string) error {
 	}
 
 	// Print original command
-	fmt.Fprintf(out, "\x1b[1;32mOriginal command (syntax highlighted):\x1b[0m\n")
+	fmt.Fprintf(out, "\x1b[1;32mOriginal command:\x1b[0m\n")
 	if err := quick.Highlight(out, cmdStr, "powershell", "terminal16m", "native"); err != nil {
 		return fmt.Errorf("failed to highlight command: %w", err)
 	}
@@ -208,7 +208,7 @@ func Analyze(command ...string) error {
 
 	if len(suggestionReplacements) > 0 {
 		fmt.Fprintln(out) // Blank line between commands
-		fmt.Fprintf(out, "\x1b[1;32mParameterized version (syntax highlighted):\x1b[0m\n")
+		fmt.Fprintf(out, "\x1b[1;32mSuggested parameterized version:\x1b[0m\n")
 		if err := quick.Highlight(out, paramStr, "powershell", "terminal16m", "native"); err != nil {
 			return fmt.Errorf("failed to highlight parameterized command: %w", err)
 		}
