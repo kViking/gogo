@@ -8,9 +8,8 @@ import (
 	"strings"
 
 	"github.com/alecthomas/chroma"
-	"github.com/alecthomas/chroma/formatters"
 	"github.com/alecthomas/chroma/lexers"
-	"github.com/alecthomas/chroma/styles"
+	"github.com/alecthomas/chroma/quick"
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 )
@@ -81,6 +80,12 @@ func Analyze(command ...string) error {
 	}
 
 	fmt.Println(color.New(color.FgGreen, color.Bold).Sprint("\nOriginal command (syntax highlighted):"))
+	// Use chroma/quick for highlighting
+	if err := quick.Highlight(os.Stdout, cmdStr, "powershell", "terminal16m", "monokai"); err != nil {
+		return fmt.Errorf("failed to highlight command: %w", err)
+	}
+	fmt.Println()
+
 	lexer := lexers.Get("powershell")
 	if lexer == nil {
 		return fmt.Errorf("could not get PowerShell lexer")
@@ -95,56 +100,6 @@ func Analyze(command ...string) error {
 	for token := iterator(); token.Type != chroma.EOF.Type; token = iterator() {
 		tokens = append(tokens, token)
 	}
-
-	// Patch the style to alias certain token types to others for more visible highlighting
-	monokai := styles.Get("monokai")
-	var patchedStyle *chroma.Style
-	if monokai != nil {
-		entries := chroma.StyleEntries{}
-		// List the token types you want to patch
-		typesToPatch := []chroma.TokenType{
-			chroma.Keyword,
-			chroma.NameBuiltin,
-			chroma.NameFunction,
-			chroma.Name,
-			chroma.LiteralString,
-			chroma.LiteralNumber,
-			chroma.NameVariable,
-			chroma.Punctuation,
-			chroma.Text,
-			chroma.Operator,
-			chroma.Comment,
-		}
-		for _, t := range typesToPatch {
-			entries[t] = monokai.Get(t).String()
-		}
-		patchedStyle = chroma.MustNewStyle("monokai-patched", entries)
-	} else {
-		patchedStyle = styles.Fallback
-	}
-
-	fmt.Fprintf(os.Stderr, "[DEBUG] Number of tokens: %d\n", len(tokens))
-	for i := 0; i < len(tokens) && i < 10; i++ {
-		entry := patchedStyle.Get(tokens[i].Type)
-		fmt.Fprintf(os.Stderr, "[DEBUG] Token %d: Type=%s, Value=%q, StyleEntry=%+v\n", i, tokens[i].Type.String(), tokens[i].Value, entry)
-	}
-	highlightIter := func() func() chroma.Token {
-		i := 0
-		return func() chroma.Token {
-			if i >= len(tokens) {
-				return chroma.Token{Type: chroma.EOF.Type}
-			}
-			tok := tokens[i]
-			i++
-			return tok
-		}
-	}()
-	formatter := formatters.Get("terminal16m")
-	fmt.Fprintf(os.Stderr, "[DEBUG] Formatter: terminal16m, Style: monokai-patched\n")
-	if err := formatter.Format(os.Stdout, patchedStyle, highlightIter); err != nil {
-		return fmt.Errorf("failed to format highlighted command: %w", err)
-	}
-	fmt.Println()
 
 	// Suggest variables for string tokens using the same tokens slice
 	var suggestions []string
