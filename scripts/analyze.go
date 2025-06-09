@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"reflect"
 	"strings"
 
 	"github.com/alecthomas/chroma"
@@ -101,25 +100,25 @@ func Analyze(command ...string) error {
 	monokai := styles.Get("monokai")
 	var patchedStyle *chroma.Style
 	if monokai != nil {
-		// Use reflection to access the private entries field as a workaround
 		entries := chroma.StyleEntries{}
-		monokaiVal := reflect.ValueOf(monokai).Elem()
-		entriesField := monokaiVal.FieldByName("entries")
-		if entriesField.IsValid() {
-			for _, key := range entriesField.MapKeys() {
-				val := entriesField.MapIndex(key)
-				// The value is a string, but chroma.MustNewStyle expects StyleEntries as map[TokenType]string
-				entries[key.Interface().(chroma.TokenType)] = val.Interface().(string)
-			}
-			// Map additional token types to more visible styles
-			entries[chroma.NameBuiltin] = entries[chroma.Keyword]
-			entries[chroma.NameFunction] = entries[chroma.Keyword]
-			entries[chroma.Name] = entries[chroma.LiteralString] // Make plain names more visible
-			// You can add more mappings as needed
-			patchedStyle = chroma.MustNewStyle("monokai-patched", entries)
-		} else {
-			patchedStyle = monokai
+		// List the token types you want to patch
+		typesToPatch := []chroma.TokenType{
+			chroma.Keyword,
+			chroma.NameBuiltin,
+			chroma.NameFunction,
+			chroma.Name,
+			chroma.LiteralString,
+			chroma.LiteralNumber,
+			chroma.NameVariable,
+			chroma.Punctuation,
+			chroma.Text,
+			chroma.Operator,
+			chroma.Comment,
 		}
+		for _, t := range typesToPatch {
+			entries[t] = monokai.Get(t).String()
+		}
+		patchedStyle = chroma.MustNewStyle("monokai-patched", entries)
 	} else {
 		patchedStyle = styles.Fallback
 	}
