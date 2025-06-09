@@ -99,13 +99,9 @@ func Analyze(command ...string) error {
 	style := styles.Get("monokai")
 	// For highlighting, create a new iterator from the tokens (Chroma expects func() chroma.Token)
 	fmt.Fprintf(os.Stderr, "[DEBUG] Number of tokens: %d\n", len(tokens))
-	for i := 0; i < len(tokens) && i < 5; i++ {
-		fmt.Fprintf(os.Stderr, "[DEBUG] Token %d: Type=%s, Value=%q\n", i, tokens[i].Type.String(), tokens[i].Value)
-	}
-	// Debug: print color style for each token
-	for i, token := range tokens {
-		entry := style.Get(token.Type)
-		fmt.Fprintf(os.Stderr, "[DEBUG] Token %d: Type=%s, Value=%q, StyleEntry=%+v\n", i, token.Type.String(), token.Value, entry)
+	for i := 0; i < len(tokens) && i < 10; i++ {
+		entry := style.Get(tokens[i].Type)
+		fmt.Fprintf(os.Stderr, "[DEBUG] Token %d: Type=%s, Value=%q, StyleEntry=%+v\n", i, tokens[i].Type.String(), tokens[i].Value, entry)
 	}
 	highlightIter := func() func() chroma.Token {
 		i := 0
