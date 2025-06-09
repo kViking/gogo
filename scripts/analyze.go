@@ -109,10 +109,13 @@ func Analyze(command ...string) error {
 	checker := GetPowerShellCommandChecker()
 
 	// Path buffer for joining path-like tokens
-	var pathBuffer []string
+	var pathBuffer []chroma.Token
 	flushPathBuffer := func() {
 		if len(pathBuffer) > 0 {
-			joined := strings.Join(pathBuffer, "")
+			joined := ""
+			for _, t := range pathBuffer {
+				joined += t.Value
+			}
 			if isLikelyPath(joined) {
 				varCounters["path"]++
 				varName := "path"
@@ -120,19 +123,39 @@ func Analyze(command ...string) error {
 					varName = fmt.Sprintf("path%d", varCounters["path"])
 				}
 				suggestions = append(suggestions, fmt.Sprintf("%s ← was %s", color.New(color.FgHiYellow, color.Bold).Sprint(varName), color.New(color.FgCyan).Sprint(joined)))
+			} else {
+				// Not a path: suggest each Name token in the buffer
+				for _, t := range pathBuffer {
+					if t.Type == chroma.Name {
+						fmt.Printf("[DEBUG] IsKnownCommand(%q) = %v\n", t.Value, checker.IsKnownCommand(t.Value))
+						if !checker.IsKnownCommand(t.Value) {
+							varCounters["string"]++
+							varName := "string"
+							if varCounters["string"] > 1 {
+								varName = fmt.Sprintf("string%d", varCounters["string"])
+							}
+							suggestions = append(suggestions, fmt.Sprintf("%s ← was %s", color.New(color.FgHiYellow, color.Bold).Sprint(varName), color.New(color.FgCyan).Sprint(t.Value)))
+						}
+					}
+				}
 			}
 			pathBuffer = nil
 		}
 	}
 
-	for _, token := range tokens {
-		if token.Type == chroma.Punctuation || token.Type == chroma.Text {
+	for i, token := range tokens {
+		if token.Type == chroma.Name || token.Type == chroma.Punctuation {
 			// Accumulate possible path
-			pathBuffer = append(pathBuffer, token.Value)
+			pathBuffer = append(pathBuffer, token)
+			// If this is the last token, flush the buffer
+			if i == len(tokens)-1 {
+				flushPathBuffer()
+			}
 			continue
 		} else {
 			flushPathBuffer()
 		}
+
 		if token.Type == chroma.LiteralString {
 			varCounters["string"]++
 			varName := "string"
@@ -159,17 +182,6 @@ func Analyze(command ...string) error {
 			}
 			suggestions = append(suggestions, fmt.Sprintf("%s ← was %s", color.New(color.FgHiYellow, color.Bold).Sprint(varName), color.New(color.FgCyan).Sprint(token.Value)))
 			continue
-		}
-		if token.Type == chroma.Name {
-			fmt.Printf("[DEBUG] IsKnownCommand(%q) = %v\n", token.Value, checker.IsKnownCommand(token.Value))
-			if !checker.IsKnownCommand(token.Value) {
-				varCounters["string"]++
-				varName := "string"
-				if varCounters["string"] > 1 {
-					varName = fmt.Sprintf("string%d", varCounters["string"])
-				}
-				suggestions = append(suggestions, fmt.Sprintf("%s ← was %s", color.New(color.FgHiYellow, color.Bold).Sprint(varName), color.New(color.FgCyan).Sprint(token.Value)))
-			}
 		}
 	}
 	flushPathBuffer()
