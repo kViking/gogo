@@ -78,10 +78,35 @@ func Analyze(command ...string) error {
 		return fmt.Errorf("failed to tokenize command for variable suggestion")
 	}
 	var suggestions []string
-	varCounters := map[string]int{"string": 0, "number": 0, "variable": 0}
+	varCounters := map[string]int{"string": 0, "number": 0, "variable": 0, "path": 0}
 	checker := NewPowerShellCommandChecker()
+
+	// Path buffer for joining path-like tokens
+	var pathBuffer []string
+	flushPathBuffer := func() {
+		if len(pathBuffer) > 0 {
+			joined := strings.Join(pathBuffer, "")
+			if isLikelyPath(joined) {
+				varCounters["path"]++
+				varName := "path"
+				if varCounters["path"] > 1 {
+					varName = fmt.Sprintf("path%d", varCounters["path"])
+				}
+				suggestions = append(suggestions, fmt.Sprintf("%s ← was %s", color.New(color.FgHiYellow, color.Bold).Sprint(varName), color.New(color.FgCyan).Sprint(joined)))
+			}
+			pathBuffer = nil
+		}
+	}
+
 	for token := iterator(); token.Type != chroma.EOF.Type; token = iterator() {
 		typeStr := token.Type.String()
+		if typeStr == "Name" || typeStr == "Punctuation" {
+			// Accumulate possible path
+			pathBuffer = append(pathBuffer, token.Value)
+			continue
+		} else {
+			flushPathBuffer()
+		}
 		if strings.HasPrefix(typeStr, "Literal.String") {
 			varCounters["string"]++
 			varName := "string"
@@ -110,7 +135,6 @@ func Analyze(command ...string) error {
 			continue
 		}
 		if typeStr == "Name" {
-			// Only suggest if not a known PowerShell command
 			if !checker.IsKnownCommand(token.Value) {
 				varCounters["string"]++
 				varName := "string"
@@ -121,6 +145,7 @@ func Analyze(command ...string) error {
 			}
 		}
 	}
+	flushPathBuffer()
 
 	if len(suggestions) > 0 {
 		fmt.Println(color.New(color.FgGreen, color.Bold).Sprint("\nSuggested variables:"))
@@ -131,6 +156,17 @@ func Analyze(command ...string) error {
 		fmt.Println(color.New(color.FgYellow, color.Bold).Sprint("\nNo suggestions found."))
 	}
 	return nil
+}
+
+// Helper to detect likely Windows/Unix paths
+func isLikelyPath(s string) bool {
+	if len(s) < 3 {
+		return false
+	}
+	if strings.Contains(s, ":\\") || strings.Contains(s, "/") {
+		return true
+	}
+	return false
 }
 
 // NewAnalyzeCommand creates a new Cobra command for analyze.
