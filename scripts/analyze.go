@@ -126,7 +126,7 @@ func Analyze(command ...string) error {
 	}
 
 	for _, token := range tokens {
-		if token.Type == chroma.Name || token.Type == chroma.Punctuation {
+		if token.Type == chroma.Punctuation || token.Type == chroma.Text {
 			// Accumulate possible path
 			pathBuffer = append(pathBuffer, token.Value)
 			continue
