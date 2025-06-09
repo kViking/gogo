@@ -15,6 +15,12 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var (
+	psCommandChecker     *PowerShellCommandChecker
+	psCommandCheckerInit bool
+	refreshCommandsFlag  bool
+)
+
 // PowerShellCommandChecker caches the list of known PowerShell commands for efficient lookup
 // and provides a method to check if a string is a known command.
 type PowerShellCommandChecker struct {
@@ -38,6 +44,20 @@ func NewPowerShellCommandChecker() *PowerShellCommandChecker {
 	return &PowerShellCommandChecker{knownCommands: m}
 }
 
+func GetPowerShellCommandChecker() *PowerShellCommandChecker {
+	if !psCommandCheckerInit {
+		psCommandChecker = NewPowerShellCommandChecker()
+		psCommandCheckerInit = true
+	}
+	return psCommandChecker
+}
+
+// RefreshPowerShellCommandChecker forces a reload of the known PowerShell commands
+func RefreshPowerShellCommandChecker() {
+	psCommandChecker = NewPowerShellCommandChecker()
+	psCommandCheckerInit = true
+}
+
 func (p *PowerShellCommandChecker) IsKnownCommand(s string) bool {
 	s = strings.ToLower(s)
 	_, ok := p.knownCommands[s]
@@ -46,6 +66,10 @@ func (p *PowerShellCommandChecker) IsKnownCommand(s string) bool {
 
 // Analyze prompts for a PowerShell command, highlights it, and suggests likely user-input variables.
 func Analyze(command ...string) error {
+	if refreshCommandsFlag {
+		RefreshPowerShellCommandChecker()
+	}
+
 	var cmdStr string
 	if len(command) > 0 && strings.TrimSpace(strings.Join(command, " ")) != "" {
 		cmdStr = strings.Join(command, " ")
@@ -65,21 +89,36 @@ func Analyze(command ...string) error {
 	if err != nil {
 		return fmt.Errorf("failed to tokenize command: %w", err)
 	}
+
+	// Collect all tokens into a slice
+	tokens := []chroma.Token{}
+	for token := iterator(); token.Type != chroma.EOF.Type; token = iterator() {
+		tokens = append(tokens, token)
+	}
+
+	// For highlighting, create a new iterator from the tokens (Chroma expects func() chroma.Token)
+	highlightIter := func() func() chroma.Token {
+		i := 0
+		return func() chroma.Token {
+			if i >= len(tokens) {
+				return chroma.Token{Type: chroma.EOF.Type}
+			}
+			tok := tokens[i]
+			i++
+			return tok
+		}
+	}()
 	formatter := formatters.Get("terminal16m")
 	style := styles.Get("monokai")
-	if err := formatter.Format(os.Stdout, style, iterator); err != nil {
+	if err := formatter.Format(os.Stdout, style, highlightIter); err != nil {
 		return fmt.Errorf("failed to format highlighted command: %w", err)
 	}
 	fmt.Println()
 
-	// Suggest variables for string tokens
-	iterator, _ = lexer.Tokenise(nil, cmdStr)
-	if iterator == nil {
-		return fmt.Errorf("failed to tokenize command for variable suggestion")
-	}
+	// Suggest variables for string tokens using the same tokens slice
 	var suggestions []string
 	varCounters := map[string]int{"string": 0, "number": 0, "variable": 0, "path": 0}
-	checker := NewPowerShellCommandChecker()
+	checker := GetPowerShellCommandChecker()
 
 	// Path buffer for joining path-like tokens
 	var pathBuffer []string
@@ -98,7 +137,7 @@ func Analyze(command ...string) error {
 		}
 	}
 
-	for token := iterator(); token.Type != chroma.EOF.Type; token = iterator() {
+	for _, token := range tokens {
 		typeStr := token.Type.String()
 		if typeStr == "Name" || typeStr == "Punctuation" {
 			// Accumulate possible path
@@ -172,6 +211,7 @@ func isLikelyPath(s string) bool {
 // NewAnalyzeCommand creates a new Cobra command for analyze.
 func NewAnalyzeCommand() *cobra.Command {
 	var command string
+	var refreshCommands bool
 
 	cmd := &cobra.Command{
 		Use:   "analyze [command]",
@@ -205,6 +245,7 @@ Example output:
 		Args: cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Priority: --command flag > positional args > prompt
+			refreshCommandsFlag = refreshCommands
 			if command != "" {
 				return Analyze(command)
 			}
@@ -216,6 +257,7 @@ Example output:
 	}
 
 	cmd.Flags().StringVar(&command, "command", "", "PowerShell command to analyze (optional, can also be provided as arguments)")
+	cmd.Flags().BoolVar(&refreshCommands, "refresh-commands", false, "Force a refresh of the known PowerShell commands")
 
 	return cmd
 }
