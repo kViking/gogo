@@ -81,9 +81,9 @@ Use 'GoGoGadget add' to create a new shortcut, 'GoGoGadget list' to see all, or 
 	}
 
 	rootCmd.AddCommand(scripts.NewAddCommand())
-	rootCmd.AddCommand(scripts.NewAnalyzeCommand())
 	rootCmd.AddCommand(scripts.NewListCommand())
 	rootCmd.AddCommand(scripts.NewDeleteCommand())
+	// rootCmd.AddCommand(scripts.NewAnalyzeCommand())
 	rootCmd.AddCommand(scripts.NewVariablesCommand())
 	scripts.AddScriptCommands(rootCmd)
 	scripts.AddEditCommand(rootCmd)
@@ -96,7 +96,7 @@ Use 'GoGoGadget add' to create a new shortcut, 'GoGoGadget list' to see all, or 
 
 // =====================  ATTENTION!  =====================
 // =                                                     =
-// =  fix the settings.json permissions so it can be      =
+// =  fix the settings.json permissions so it can be     =
 // =  written to by GoGoGadget                           =
 // =                                                     =
 // =======================================================
