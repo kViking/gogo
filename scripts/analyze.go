@@ -10,7 +10,7 @@ import (
 	"github.com/alecthomas/chroma"
 	"github.com/alecthomas/chroma/lexers"
 	"github.com/alecthomas/chroma/quick"
-	"github.com/fatih/color"
+	"github.com/mattn/go-colorable"
 	"github.com/spf13/cobra"
 )
 
@@ -69,18 +69,20 @@ func Analyze(command ...string) error {
 		RefreshPowerShellCommandChecker()
 	}
 
+	out := colorable.NewColorableStdout()
+
 	var cmdStr string
 	if len(command) > 0 && strings.TrimSpace(strings.Join(command, " ")) != "" {
 		cmdStr = strings.Join(command, " ")
 	} else {
-		fmt.Println() // Ensure a blank line before the prompt
-		fmt.Print("Enter your PowerShell command: ")
+		fmt.Fprintln(out) // Ensure a blank line before the prompt
+		fmt.Fprint(out, "Enter your PowerShell command: ")
 		reader := bufio.NewReader(os.Stdin)
 		input, _ := reader.ReadString('\n')
 		cmdStr = strings.TrimSpace(input)
 	}
 
-	// Start spinner for analysis (tokenization, suggestion finding)
+	fmt.Fprintln(out) // Blank line before spinner
 	spinner := GetSpinner("Analyzing command...")
 	spinner.Start()
 
@@ -183,7 +185,9 @@ func Analyze(command ...string) error {
 	}
 	flushPathBuffer()
 
-	fmt.Println() // Ensure a blank line before the output
+	fmt.Fprintln(out) // Blank line after spinner
+	spinner.Stop()
+	fmt.Fprintln(out) // Ensure a blank line before the output
 
 	// Parameterization (no spinner needed)
 	var paramStr = cmdStr
@@ -195,35 +199,30 @@ func Analyze(command ...string) error {
 		}
 	}
 
-	// Stop spinner just before printing output
-	spinner.Stop()
-
-	fmt.Println(color.New(color.FgGreen, color.Bold).Sprint("Original command (syntax highlighted):"))
-	if err := quick.Highlight(os.Stdout, cmdStr, "powershell", "terminal16m", "native"); err != nil {
+	// Print original command
+	fmt.Fprintf(out, "\x1b[1;32mOriginal command (syntax highlighted):\x1b[0m\n")
+	if err := quick.Highlight(out, cmdStr, "powershell", "terminal16m", "native"); err != nil {
 		return fmt.Errorf("failed to highlight command: %w", err)
 	}
-	fmt.Println()
+	fmt.Fprintln(out)
 
 	if len(suggestionReplacements) > 0 {
-		fmt.Println() // Blank line between commands
-		fmt.Println(color.New(color.FgGreen, color.Bold).Sprint("Parameterized version (syntax highlighted):"))
-		if err := quick.Highlight(os.Stdout, paramStr, "powershell", "terminal16m", "native"); err != nil {
+		fmt.Fprintln(out) // Blank line between commands
+		fmt.Fprintf(out, "\x1b[1;32mParameterized version (syntax highlighted):\x1b[0m\n")
+		if err := quick.Highlight(out, paramStr, "powershell", "terminal16m", "native"); err != nil {
 			return fmt.Errorf("failed to highlight parameterized command: %w", err)
 		}
-		fmt.Println()
+		fmt.Fprintln(out)
 	}
 
 	if len(suggestions) > 0 {
-		fmt.Println() // Blank line before suggestions
-		fmt.Println("Suggested variables:")
+		fmt.Fprintln(out) // Blank line before suggestions
+		fmt.Fprintln(out, "Suggested variables:")
 		for _, s := range suggestions {
-			fmt.Print("  ")
-			color.New(color.FgHiYellow, color.Bold).Printf("%s", s.VarName)
-			color.New(color.FgWhite, color.Bold).Printf(" ← was ")
-			color.New(color.FgCyan, color.Bold).Printf("%s\n", s.Original)
+			fmt.Fprintf(out, "  \x1b[1;33m%s\x1b[0m\x1b[1;37m ← was \x1b[0m\x1b[1;36m%s\x1b[0m\n", s.VarName, s.Original)
 		}
 	} else {
-		fmt.Println(color.New(color.FgYellow, color.Bold).Sprint("\nNo suggestions found."))
+		fmt.Fprintf(out, "\n\x1b[1;33mNo suggestions found.\x1b[0m\n")
 	}
 	return nil
 }
