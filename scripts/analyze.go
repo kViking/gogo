@@ -188,16 +188,24 @@ func Analyze(command ...string) error {
 	}
 	flushPathBuffer()
 
-	var suggestionReplacements []struct{ Original, Replacement string }
-	var paramStr = cmdStr
-	for _, s := range suggestions {
-		paramStr = strings.Replace(paramStr, s.Original, "{{"+s.VarName+"}}", 1)
-		suggestionReplacements = append(suggestionReplacements, struct{ Original, Replacement string }{s.Original, "{{" + s.VarName + "}}"})
-	}
-
 	spinner.Stop()
 
 	fmt.Println() // Ensure a blank line before the output
+
+	// Start spinner for parameterization only if there are suggestions
+	var paramStr = cmdStr
+	var suggestionReplacements []struct{ Original, Replacement string }
+	if len(suggestions) > 0 {
+		paramSpinner := GetSpinner("Parameterizing command...")
+		paramSpinner.Start()
+		// Do the parameterization while spinner is spinning
+		for _, s := range suggestions {
+			paramStr = strings.Replace(paramStr, s.Original, "{{"+s.VarName+"}}", 1)
+			suggestionReplacements = append(suggestionReplacements, struct{ Original, Replacement string }{s.Original, "{{" + s.VarName + "}}"})
+		}
+		paramSpinner.Stop()
+	}
+
 	fmt.Println(color.New(color.FgGreen, color.Bold).Sprint("Original command (syntax highlighted):"))
 	if err := quick.Highlight(os.Stdout, cmdStr, "powershell", "terminal16m", "native"); err != nil {
 		return fmt.Errorf("failed to highlight command: %w", err)
@@ -217,8 +225,8 @@ func Analyze(command ...string) error {
 		for _, s := range suggestions {
 			fmt.Print("  ")
 			fmt.Print(color.New(color.FgHiYellow, color.Bold).Sprint(s.VarName))
-			fmt.Print(color.New(color.FgWhite).Sprint(" ← was "))
-			fmt.Println(color.New(color.FgCyan).Sprint(s.Original))
+			fmt.Print(color.New(color.FgWhite, color.Bold).Sprint(" ← was "))
+			fmt.Println(color.New(color.FgCyan, color.Bold).Sprint(s.Original))
 		}
 	} else {
 		fmt.Println(color.New(color.FgYellow, color.Bold).Sprint("\nNo suggestions found."))
