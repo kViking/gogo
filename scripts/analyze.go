@@ -144,15 +144,14 @@ func Analyze(command ...string) error {
 	}
 
 	for _, token := range tokens {
-		typeStr := token.Type.String()
-		if typeStr == "Name" || typeStr == "Punctuation" {
+		if token.Type == chroma.Name || token.Type == chroma.Punctuation {
 			// Accumulate possible path
 			pathBuffer = append(pathBuffer, token.Value)
 			continue
 		} else {
 			flushPathBuffer()
 		}
-		if strings.HasPrefix(typeStr, "Literal.String") {
+		if token.Type == chroma.LiteralString {
 			varCounters["string"]++
 			varName := "string"
 			if varCounters["string"] > 1 {
@@ -161,7 +160,7 @@ func Analyze(command ...string) error {
 			suggestions = append(suggestions, fmt.Sprintf("%s ← was %s", color.New(color.FgHiYellow, color.Bold).Sprint(varName), color.New(color.FgCyan).Sprint(token.Value)))
 			continue
 		}
-		if strings.HasPrefix(typeStr, "Literal.Number") {
+		if token.Type == chroma.LiteralNumber {
 			varCounters["number"]++
 			varName := "number"
 			if varCounters["number"] > 1 {
@@ -170,7 +169,7 @@ func Analyze(command ...string) error {
 			suggestions = append(suggestions, fmt.Sprintf("%s ← was %s", color.New(color.FgHiYellow, color.Bold).Sprint(varName), color.New(color.FgCyan).Sprint(token.Value)))
 			continue
 		}
-		if typeStr == "Name.Variable" {
+		if token.Type == chroma.NameVariable {
 			varCounters["variable"]++
 			varName := "variable"
 			if varCounters["variable"] > 1 {
@@ -179,7 +178,7 @@ func Analyze(command ...string) error {
 			suggestions = append(suggestions, fmt.Sprintf("%s ← was %s", color.New(color.FgHiYellow, color.Bold).Sprint(varName), color.New(color.FgCyan).Sprint(token.Value)))
 			continue
 		}
-		if typeStr == "Name" {
+		if token.Type == chroma.Name {
 			if !checker.IsKnownCommand(token.Value) {
 				varCounters["string"]++
 				varName := "string"
