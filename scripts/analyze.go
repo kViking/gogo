@@ -81,7 +81,7 @@ func Analyze(command ...string) error {
 
 	fmt.Println(color.New(color.FgGreen, color.Bold).Sprint("\nOriginal command (syntax highlighted):"))
 	// Use chroma/quick for highlighting
-	if err := quick.Highlight(os.Stdout, cmdStr, "powershell", "terminal16m", "monokai"); err != nil {
+	if err := quick.Highlight(os.Stdout, cmdStr, "powershell", "terminal16m", "native"); err != nil {
 		return fmt.Errorf("failed to highlight command: %w", err)
 	}
 	fmt.Println()
