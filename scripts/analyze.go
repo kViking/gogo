@@ -97,6 +97,15 @@ func Analyze(command ...string) error {
 	}
 
 	// For highlighting, create a new iterator from the tokens (Chroma expects func() chroma.Token)
+	fmt.Fprintf(os.Stderr, "[DEBUG] Number of tokens: %d\n", len(tokens))
+	for i := 0; i < len(tokens) && i < 5; i++ {
+		fmt.Fprintf(os.Stderr, "[DEBUG] Token %d: Type=%s, Value=%q\n", i, tokens[i].Type.String(), tokens[i].Value)
+	}
+	// Debug: print color style for each token
+	for i, token := range tokens {
+		entry := style.Get(token.Type)
+		fmt.Fprintf(os.Stderr, "[DEBUG] Token %d: Type=%s, Value=%q, StyleEntry=%+v\n", i, token.Type.String(), token.Value, entry)
+	}
 	highlightIter := func() func() chroma.Token {
 		i := 0
 		return func() chroma.Token {
@@ -108,8 +117,9 @@ func Analyze(command ...string) error {
 			return tok
 		}
 	}()
-	formatter := formatters.Get("terminal")
+	formatter := formatters.Get("terminal16m")
 	style := styles.Get("monokai")
+	fmt.Fprintf(os.Stderr, "[DEBUG] Formatter: terminal16m, Style: monokai\n")
 	if err := formatter.Format(os.Stdout, style, highlightIter); err != nil {
 		return fmt.Errorf("failed to format highlighted command: %w", err)
 	}
