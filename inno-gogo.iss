@@ -42,7 +42,8 @@ Filename: "powershell.exe"; \
 Filename: "powershell.exe"; \
   Parameters: "-NoProfile -ExecutionPolicy Bypass -File '{tmp}\uninstall-profile.ps1' -GadgetPath='{app}\GoGoGadget.ps1'"; \
   Flags: runhidden; \
-  StatusMsg: "Cleaning up GoGoGadget completions from PowerShell profile..."
+  StatusMsg: "Cleaning up GoGoGadget completions from PowerShell profile..."; \
+  RunOnceId: GoGoGadgetUninstallCleanup
 
 [UninstallDelete]
 Type: filesandordirs; Name: "{userappdata}\GoGoGadget"
