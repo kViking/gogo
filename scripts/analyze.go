@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"reflect"
 	"strings"
 
 	"github.com/alecthomas/chroma"
@@ -96,11 +97,36 @@ func Analyze(command ...string) error {
 		tokens = append(tokens, token)
 	}
 
-	style := styles.Get("monokai")
-	// For highlighting, create a new iterator from the tokens (Chroma expects func() chroma.Token)
+	// Patch the style to alias certain token types to others for more visible highlighting
+	monokai := styles.Get("monokai")
+	var patchedStyle *chroma.Style
+	if monokai != nil {
+		// Use reflection to access the private entries field as a workaround
+		entries := chroma.StyleEntries{}
+		monokaiVal := reflect.ValueOf(monokai).Elem()
+		entriesField := monokaiVal.FieldByName("entries")
+		if entriesField.IsValid() {
+			for _, key := range entriesField.MapKeys() {
+				val := entriesField.MapIndex(key)
+				// The value is a string, but chroma.MustNewStyle expects StyleEntries as map[TokenType]string
+				entries[key.Interface().(chroma.TokenType)] = val.Interface().(string)
+			}
+			// Map additional token types to more visible styles
+			entries[chroma.NameBuiltin] = entries[chroma.Keyword]
+			entries[chroma.NameFunction] = entries[chroma.Keyword]
+			entries[chroma.Name] = entries[chroma.LiteralString] // Make plain names more visible
+			// You can add more mappings as needed
+			patchedStyle = chroma.MustNewStyle("monokai-patched", entries)
+		} else {
+			patchedStyle = monokai
+		}
+	} else {
+		patchedStyle = styles.Fallback
+	}
+
 	fmt.Fprintf(os.Stderr, "[DEBUG] Number of tokens: %d\n", len(tokens))
 	for i := 0; i < len(tokens) && i < 10; i++ {
-		entry := style.Get(tokens[i].Type)
+		entry := patchedStyle.Get(tokens[i].Type)
 		fmt.Fprintf(os.Stderr, "[DEBUG] Token %d: Type=%s, Value=%q, StyleEntry=%+v\n", i, tokens[i].Type.String(), tokens[i].Value, entry)
 	}
 	highlightIter := func() func() chroma.Token {
@@ -115,8 +141,8 @@ func Analyze(command ...string) error {
 		}
 	}()
 	formatter := formatters.Get("terminal16m")
-	fmt.Fprintf(os.Stderr, "[DEBUG] Formatter: terminal16m, Style: monokai\n")
-	if err := formatter.Format(os.Stdout, style, highlightIter); err != nil {
+	fmt.Fprintf(os.Stderr, "[DEBUG] Formatter: terminal16m, Style: monokai-patched\n")
+	if err := formatter.Format(os.Stdout, patchedStyle, highlightIter); err != nil {
 		return fmt.Errorf("failed to format highlighted command: %w", err)
 	}
 	fmt.Println()
