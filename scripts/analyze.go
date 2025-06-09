@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"os/exec"
 	"strings"
 
 	"github.com/alecthomas/chroma"
@@ -13,6 +14,35 @@ import (
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 )
+
+// PowerShellCommandChecker caches the list of known PowerShell commands for efficient lookup
+// and provides a method to check if a string is a known command.
+type PowerShellCommandChecker struct {
+	knownCommands map[string]struct{}
+}
+
+// NewPowerShellCommandChecker dynamically loads all available PowerShell command names (lowercased)
+func NewPowerShellCommandChecker() *PowerShellCommandChecker {
+	cmd := "pwsh -NoProfile -Command Get-Command | Select-Object -ExpandProperty Name"
+	output, err := exec.Command("bash", "-c", cmd).Output()
+	m := make(map[string]struct{})
+	if err == nil {
+		names := strings.Split(string(output), "\n")
+		for _, n := range names {
+			n = strings.ToLower(strings.TrimSpace(n))
+			if n != "" {
+				m[n] = struct{}{}
+			}
+		}
+	}
+	return &PowerShellCommandChecker{knownCommands: m}
+}
+
+func (p *PowerShellCommandChecker) IsKnownCommand(s string) bool {
+	s = strings.ToLower(s)
+	_, ok := p.knownCommands[s]
+	return ok
+}
 
 // Analyze prompts for a PowerShell command, highlights it, and suggests likely user-input variables.
 func Analyze(command ...string) error {
@@ -43,12 +73,13 @@ func Analyze(command ...string) error {
 	fmt.Println()
 
 	// Suggest variables for string tokens
-	iterator, err = lexer.Tokenise(nil, cmdStr)
+	iterator, _ = lexer.Tokenise(nil, cmdStr)
 	if iterator == nil {
 		return fmt.Errorf("failed to tokenize command for variable suggestion")
 	}
 	var suggestions []string
 	varCounters := map[string]int{"string": 0, "number": 0, "variable": 0}
+	checker := NewPowerShellCommandChecker()
 	for token := iterator(); token.Type != chroma.EOF.Type; token = iterator() {
 		typeStr := token.Type.String()
 		if strings.HasPrefix(typeStr, "Literal.String") {
@@ -58,6 +89,7 @@ func Analyze(command ...string) error {
 				varName = fmt.Sprintf("string%d", varCounters["string"])
 			}
 			suggestions = append(suggestions, fmt.Sprintf("%s ← was %s", color.New(color.FgHiYellow, color.Bold).Sprint(varName), color.New(color.FgCyan).Sprint(token.Value)))
+			continue
 		}
 		if strings.HasPrefix(typeStr, "Literal.Number") {
 			varCounters["number"]++
@@ -66,6 +98,7 @@ func Analyze(command ...string) error {
 				varName = fmt.Sprintf("number%d", varCounters["number"])
 			}
 			suggestions = append(suggestions, fmt.Sprintf("%s ← was %s", color.New(color.FgHiYellow, color.Bold).Sprint(varName), color.New(color.FgCyan).Sprint(token.Value)))
+			continue
 		}
 		if typeStr == "Name.Variable" {
 			varCounters["variable"]++
@@ -74,6 +107,18 @@ func Analyze(command ...string) error {
 				varName = fmt.Sprintf("variable%d", varCounters["variable"])
 			}
 			suggestions = append(suggestions, fmt.Sprintf("%s ← was %s", color.New(color.FgHiYellow, color.Bold).Sprint(varName), color.New(color.FgCyan).Sprint(token.Value)))
+			continue
+		}
+		if typeStr == "Name" {
+			// Only suggest if not a known PowerShell command
+			if !checker.IsKnownCommand(token.Value) {
+				varCounters["string"]++
+				varName := "string"
+				if varCounters["string"] > 1 {
+					varName = fmt.Sprintf("string%d", varCounters["string"])
+				}
+				suggestions = append(suggestions, fmt.Sprintf("%s ← was %s", color.New(color.FgHiYellow, color.Bold).Sprint(varName), color.New(color.FgCyan).Sprint(token.Value)))
+			}
 		}
 	}
 
