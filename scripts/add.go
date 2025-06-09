@@ -7,7 +7,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/fatih/color"
+	"github.com/mattn/go-colorable"
 	"github.com/spf13/cobra"
 )
 
@@ -66,7 +66,7 @@ func NewAddCommand() *cobra.Command {
 			}
 
 			if scriptName == "" || command == "" {
-				color.New(color.FgRed).Fprintln(os.Stderr, "❌ Name and command are required.")
+				fmt.Fprintln(colorable.NewColorableStderr(), "\x1b[31m❌ Name and command are required.\x1b[0m")
 				return
 			}
 			scripts[scriptName] = ScriptConfig{
@@ -75,10 +75,10 @@ func NewAddCommand() *cobra.Command {
 				Variables:   variables,
 			}
 			if err := saveScripts(scripts); err != nil {
-				color.New(color.FgRed).Fprintln(os.Stderr, "❌ Error saving script:", err)
+				fmt.Fprintln(colorable.NewColorableStderr(), "\x1b[31m❌ Error saving script:\x1b[0m", err)
 				return
 			}
-			color.New(color.FgGreen).Println("✅ Script added!")
+			colorText.Green("✅ Script added!")
 		},
 	}
 

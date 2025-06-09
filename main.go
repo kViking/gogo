@@ -2,11 +2,12 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"gogo/scripts"
 	"os"
 	"path/filepath"
 
-	"github.com/fatih/color"
+	"github.com/mattn/go-colorable"
 	"github.com/spf13/cobra"
 )
 
@@ -88,7 +89,7 @@ Use 'GoGoGadget add' to create a new shortcut, 'GoGoGadget list' to see all, or 
 	scripts.AddEditCommand(rootCmd)
 
 	if err := rootCmd.Execute(); err != nil {
-		color.New(color.FgRed).Fprintf(os.Stderr, "❌ Error: %v\n", err)
+		fmt.Fprintln(colorable.NewColorableStderr(), "\x1b[31m❌ Error: \x1b[0m", err)
 		os.Exit(1)
 	}
 }

@@ -1,9 +1,9 @@
 package scripts
 
 import (
-	"os"
+	"fmt"
 
-	"github.com/fatih/color"
+	"github.com/mattn/go-colorable"
 	"github.com/spf13/cobra"
 )
 
@@ -16,15 +16,15 @@ func NewDeleteCommand() *cobra.Command {
 			scripts, _ := loadScripts()
 			name := args[0]
 			if _, ok := scripts[name]; !ok {
-				color.New(color.FgRed).Fprintf(os.Stderr, "❌ Script '%s' not found.\n", name)
+				colorText.Red(fmt.Sprintf("❌ Script '%s' not found.\n", name))
 				return
 			}
 			delete(scripts, name)
 			if err := saveScripts(scripts); err != nil {
-				color.New(color.FgRed).Fprintln(os.Stderr, "❌ Error deleting script:", err)
+				colorText.Red(fmt.Sprintf("❌ Error deleting script: %v", err))
 				return
 			}
-			color.New(color.FgGreen).Printf("✅ Script '%s' deleted!\n", name)
+			fmt.Fprintln(colorable.NewColorableStdout(), "\x1b[32m✅ Script '"+name+"' deleted!\x1b[0m")
 		},
 	}
 	return cmd

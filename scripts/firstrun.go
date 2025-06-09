@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 )
 
@@ -90,12 +89,12 @@ func getUserConfirmation() {
 		// Update settings file
 		updateSettingsFile()
 
-		color.New(color.FgGreen).Println("✅ You're all set up! Run GoGoGadget --help to see available commands, or GoGoGadget [command] --help to see help for a command")
+		colorText.Green("✅ You're all set up! Run GoGoGadget --help to see available commands, or GoGoGadget [command] --help to see help for a command")
 		os.Exit(0) // Exit with success code
 	}
 
 	// If the user doesn't confirm, exit with error code
-	color.New(color.FgYellow).Println("⚠️ Operation cancelled")
+	colorText.Yellow("⚠️ Operation cancelled")
 	os.Exit(1)
 }
 
@@ -112,9 +111,8 @@ You are running GoGoGadget for the first time! This is exciting! You need to kno
 	fmt.Print(warningMsg)
 
 	// Show the first sentence of point 1 in bright red
-	red := color.New(color.FgHiRed, color.Bold)
 	fmt.Print("1. ")
-	red.Print("GoGoGadget does NOT have any checks for your PowerShell scripts.")
+	fmt.Print("\x1b[1;91mGoGoGadget does NOT have any checks for your PowerShell scripts.\x1b[0m")
 
 	// Define the rest of the message as a string literal
 	restOfMsg := ` It will run them as-is, with variables replaced exactly as you specify. Make sure you test your scripts before saving them with GoGoGadget!
@@ -150,9 +148,8 @@ You are running GoGoGadget for the first time! This is exciting! You need to kno
 			fmt.Print(warningMsg)
 
 			// Show the first sentence of point 1 in bright red
-			red := color.New(color.FgHiRed, color.Bold)
 			fmt.Print("1. ")
-			red.Print("GoGoGadget does NOT have any checks for your PowerShell scripts.")
+			fmt.Print("\x1b[1;91mGoGoGadget does NOT have any checks for your PowerShell scripts.\x1b[0m")
 
 			// Define the rest of the message as a string literal
 			restOfMsg := ` It will run them as-is, with variables replaced exactly as you specify. Make sure you test your scripts before saving them with GoGoGadget!
@@ -171,9 +168,9 @@ You can always run 'GoGoGadget help' for instructions on how to use the tool.
 			response = strings.TrimSpace(strings.ToLower(response))
 
 			if response == "y" || response == "yes" {
-				color.New(color.FgGreen).Println("✅ Continuing with GoGoGadget")
+				colorText.Green("✅ Continuing with GoGoGadget")
 			} else {
-				color.New(color.FgYellow).Println("⚠️ Please review the information above")
+				colorText.Yellow("⚠️ Please review the information above")
 			}
 		},
 	}
