@@ -80,19 +80,18 @@ func Analyze(command ...string) error {
 		cmdStr = strings.TrimSpace(input)
 	}
 
-	fmt.Println(color.New(color.FgGreen, color.Bold).Sprint("\nOriginal command (syntax highlighted):"))
-	// Use chroma/quick for highlighting
-	if err := quick.Highlight(os.Stdout, cmdStr, "powershell", "terminal16m", "native"); err != nil {
-		return fmt.Errorf("failed to highlight command: %w", err)
-	}
-	fmt.Println()
+	// Start spinner for analysis (tokenization, suggestion finding)
+	spinner := GetSpinner("Analyzing command...")
+	spinner.Start()
 
 	lexer := lexers.Get("powershell")
 	if lexer == nil {
+		spinner.Stop()
 		return fmt.Errorf("could not get PowerShell lexer")
 	}
 	iterator, err := lexer.Tokenise(nil, cmdStr)
 	if err != nil {
+		spinner.Stop()
 		return fmt.Errorf("failed to tokenize command: %w", err)
 	}
 
@@ -141,10 +140,6 @@ func Analyze(command ...string) error {
 		}
 	}
 
-	// Start spinner for progress indication
-	spinner := GetSpinner("Analyzing command...")
-	spinner.Start()
-
 	for i, token := range tokens {
 		if token.Type == chroma.Name || token.Type == chroma.Punctuation {
 			// Accumulate possible path
@@ -188,23 +183,20 @@ func Analyze(command ...string) error {
 	}
 	flushPathBuffer()
 
-	spinner.Stop()
-
 	fmt.Println() // Ensure a blank line before the output
 
-	// Start spinner for parameterization only if there are suggestions
+	// Parameterization (no spinner needed)
 	var paramStr = cmdStr
 	var suggestionReplacements []struct{ Original, Replacement string }
 	if len(suggestions) > 0 {
-		paramSpinner := GetSpinner("Parameterizing command...")
-		paramSpinner.Start()
-		// Do the parameterization while spinner is spinning
 		for _, s := range suggestions {
 			paramStr = strings.Replace(paramStr, s.Original, "{{"+s.VarName+"}}", 1)
 			suggestionReplacements = append(suggestionReplacements, struct{ Original, Replacement string }{s.Original, "{{" + s.VarName + "}}"})
 		}
-		paramSpinner.Stop()
 	}
+
+	// Stop spinner just before printing output
+	spinner.Stop()
 
 	fmt.Println(color.New(color.FgGreen, color.Bold).Sprint("Original command (syntax highlighted):"))
 	if err := quick.Highlight(os.Stdout, cmdStr, "powershell", "terminal16m", "native"); err != nil {
