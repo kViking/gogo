@@ -6,7 +6,6 @@ import (
 	"os"
 	"strings"
 
-	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 )
 
@@ -22,13 +21,13 @@ func AddEditCommand(root *cobra.Command) {
 		Run: func(cmd *cobra.Command, args []string) {
 			scripts, err := loadScripts()
 			if err != nil {
-				color.New(color.FgRed).Fprintln(os.Stderr, "❌ Could not load scripts.")
+				colorText.Red("❌ Could not load scripts.")
 				return
 			}
 			name := args[0]
 			script, ok := scripts[name]
 			if !ok {
-				color.New(color.FgRed).Fprintf(os.Stderr, "❌ Script '%s' not found.\n", name)
+				colorText.Red(fmt.Sprintf("❌ Script '%s' not found.", name))
 				return
 			}
 
@@ -40,7 +39,7 @@ func AddEditCommand(root *cobra.Command) {
 					delete(scripts, name)
 					name = newName
 					_ = saveScripts(scripts)
-					color.New(color.FgGreen).Println("✅ Script name updated.")
+					colorText.Green("✅ Script name updated.")
 					return
 				} else if newName == "" {
 					reader := bufio.NewReader(os.Stdin)
@@ -52,7 +51,7 @@ func AddEditCommand(root *cobra.Command) {
 						delete(scripts, name)
 						name = input
 						_ = saveScripts(scripts)
-						color.New(color.FgGreen).Println("✅ Script name updated.")
+						colorText.Green("✅ Script name updated.")
 					}
 					return
 				}
@@ -63,7 +62,7 @@ func AddEditCommand(root *cobra.Command) {
 					script.Description = newDesc
 					scripts[name] = script
 					_ = saveScripts(scripts)
-					color.New(color.FgGreen).Println("✅ Script description updated.")
+					colorText.Green("✅ Script description updated.")
 					return
 				} else {
 					reader := bufio.NewReader(os.Stdin)
@@ -74,7 +73,7 @@ func AddEditCommand(root *cobra.Command) {
 						script.Description = input
 						scripts[name] = script
 						_ = saveScripts(scripts)
-						color.New(color.FgGreen).Println("✅ Script description updated.")
+						colorText.Green("✅ Script description updated.")
 					}
 					return
 				}
@@ -85,7 +84,7 @@ func AddEditCommand(root *cobra.Command) {
 					script.Command = newCmd
 					scripts[name] = script
 					_ = saveScripts(scripts)
-					color.New(color.FgGreen).Println("✅ Script command updated.")
+					colorText.Green("✅ Script command updated.")
 					return
 				} else {
 					reader := bufio.NewReader(os.Stdin)
@@ -96,7 +95,7 @@ func AddEditCommand(root *cobra.Command) {
 						script.Command = input
 						scripts[name] = script
 						_ = saveScripts(scripts)
-						color.New(color.FgGreen).Println("✅ Script command updated.")
+						colorText.Green("✅ Script command updated.")
 					}
 					return
 				}
@@ -145,7 +144,7 @@ func AddEditCommand(root *cobra.Command) {
 					}
 				case "0":
 					_ = saveScripts(scripts)
-					color.New(color.FgGreen).Println("✅ Script updated.")
+					colorText.Green("✅ Script updated.")
 					return
 				default:
 					// Check if editing a variable description
@@ -158,7 +157,7 @@ func AddEditCommand(root *cobra.Command) {
 						script.Variables[varKey] = strings.TrimSpace(newDesc)
 						scripts[name] = script
 					} else {
-						color.New(color.FgRed).Println("Invalid choice.")
+						colorText.Red("Invalid choice.")
 					}
 				}
 			}

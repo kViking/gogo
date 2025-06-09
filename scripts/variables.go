@@ -2,9 +2,7 @@ package scripts
 
 import (
 	"fmt"
-	"os"
 
-	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 )
 
@@ -12,23 +10,23 @@ import (
 func ShowScriptVariables(scriptName string) {
 	scripts, err := loadScripts()
 	if err != nil {
-		color.New(color.FgRed).Fprintln(os.Stderr, "❌ Error loading user_scripts.json:", err)
+		colorText.Red("❌ Error loading user_scripts.json: " + err.Error())
 		return
 	}
 	config, ok := scripts[scriptName]
 	if !ok {
-		color.New(color.FgRed).Fprintf(os.Stderr, "❌ Script '%s' not found.\n", scriptName)
+		colorText.Red(fmt.Sprintf("❌ Script '%s' not found.", scriptName))
 		return
 	}
 	varNames := extractVariables(config.Command)
 	if len(varNames) == 0 {
-		color.New(color.FgYellow).Println("This shortcut has no variables.")
+		colorText.Yellow("This shortcut has no variables.")
 		return
 	}
-	color.New(color.FgCyan).Printf("Variables for '%s':\n", scriptName)
+	colorText.Cyan(fmt.Sprintf("Variables for '%s':", scriptName))
 	for _, varName := range varNames {
 		desc := getVariableDescription(varName, config)
-		color.New(color.FgGreen).Printf("  %s: ", varName)
+		colorText.Green(fmt.Sprintf("  %s: ", varName))
 		fmt.Printf("%s\n", desc)
 	}
 }

@@ -1,9 +1,9 @@
 package scripts
 
 import (
-	"os"
+	"fmt"
 
-	"github.com/fatih/color"
+	"github.com/mattn/go-colorable"
 	"github.com/spf13/cobra"
 )
 
@@ -14,16 +14,16 @@ func NewListCommand() *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			scripts, err := loadScripts()
 			if err != nil {
-				color.New(color.FgRed).Fprintln(os.Stderr, "❌ Error loading scripts:", err)
+				fmt.Fprintln(colorable.NewColorableStderr(), "\x1b[31m❌ Error loading scripts:\x1b[0m", err)
 				return
 			}
 			if len(scripts) == 0 {
-				color.New(color.FgYellow).Println("No scripts found.")
+				colorText.Yellow("No scripts found.")
 				return
 			}
-			color.New(color.FgCyan).Println("Available scripts:")
+			fmt.Fprintln(colorable.NewColorableStdout(), "\x1b[36mAvailable scripts:\x1b[0m")
 			for name, script := range scripts {
-				color.New(color.FgGreen).Printf("- %s: %s\n", name, script.Description)
+				fmt.Fprintf(colorable.NewColorableStdout(), "\x1b[32m- %s: %s\x1b[0m\n", name, script.Description)
 			}
 		},
 	}

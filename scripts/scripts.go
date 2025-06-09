@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/fatih/color"
+	"github.com/mattn/go-colorable"
 	"github.com/spf13/cobra"
 )
 
@@ -18,9 +18,10 @@ const (
 
 // Text styling helpers
 var (
-	errorText   = color.New(color.FgRed)
-	successText = color.New(color.FgGreen)
-	infoText    = color.New(color.FgCyan)
+	errorText   = func(msg string) { fmt.Fprintln(colorable.NewColorableStdout(), "\x1b[31m"+msg+"\x1b[0m") }
+	successText = func(msg string) { fmt.Fprintln(colorable.NewColorableStdout(), "\x1b[32m"+msg+"\x1b[0m") }
+	infoText    = func(msg string) { fmt.Fprintln(colorable.NewColorableStdout(), "\x1b[36m"+msg+"\x1b[0m") }
+	warnText    = func(msg string) { fmt.Fprintln(colorable.NewColorableStdout(), "\x1b[33m"+msg+"\x1b[0m") }
 )
 
 type ScriptConfig struct {
@@ -85,7 +86,7 @@ func getVariableDescription(varName string, config ScriptConfig) string {
 // promptForVariable asks the user to input a value for a variable
 func promptForVariable(varName string, config ScriptConfig) string {
 	desc := getVariableDescription(varName, config)
-	infoText.Printf("Enter %s: ", desc)
+	infoText(fmt.Sprintf("Enter %s: ", desc))
 
 	var value string
 	fmt.Scanln(&value)
@@ -123,7 +124,7 @@ func runPowerShellScript(scriptName, content string) error {
 func AddScriptCommands(root *cobra.Command) {
 	scripts, err := loadScripts()
 	if err != nil {
-		errorText.Fprintln(os.Stderr, "❌ Error loading user_scripts.json:", err)
+		errorText(fmt.Sprintf("❌ Error loading user_scripts.json: %v", err))
 		return // No scripts yet
 	}
 
@@ -140,7 +141,7 @@ Example usage:
   GoGoGadget ` + name + ` -VAR1 value1 -VAR2 value2
 `,
 			Args: cobra.ArbitraryArgs,
-			Run:  createScriptRunFunc(name, config, varNames),
+			Run:  createScriptRunFunc(name, config),
 		}
 
 		// Add flags for each variable
@@ -154,19 +155,19 @@ Example usage:
 }
 
 // createScriptRunFunc returns a function to run the script with variables
-func createScriptRunFunc(name string, config ScriptConfig, varNames []string) func(*cobra.Command, []string) {
+func createScriptRunFunc(name string, config ScriptConfig) func(*cobra.Command, []string) {
 	return func(cmd *cobra.Command, args []string) {
 		vars := make(map[string]string)
 
 		// Always get the latest variable list from the script definition
 		scripts, err := loadScripts()
 		if err != nil {
-			errorText.Fprintln(os.Stderr, "❌ Error loading user_scripts.json:", err)
+			errorText(fmt.Sprintf("❌ Error loading user_scripts.json: %v", err))
 			return
 		}
 		config, ok := scripts[name]
 		if !ok {
-			errorText.Fprintf(os.Stderr, "❌ Script '%s' not found.\n", name)
+			errorText(fmt.Sprintf("❌ Script '%s' not found.\n", name))
 			return
 		}
 		varNames := extractVariables(config.Command)
@@ -196,11 +197,27 @@ func createScriptRunFunc(name string, config ScriptConfig, varNames []string) fu
 		// Create and run the script
 		scriptContent := fmt.Sprintf("# %s\n%s\n", config.Description, psCommand)
 		if err := runPowerShellScript(name, scriptContent); err != nil {
-			errorText.Println("❌ Error running your script. Please check your command and variable values.")
-			errorText.Println("Details:", err)
+			errorText("❌ Error running your script. Please check your command and variable values.")
+			errorText(fmt.Sprintf("Details: %v", err))
 			_ = cmd.Help()
 		} else {
-			successText.Println("✅ Script finished! If you expected output, check above.")
+			successText("✅ Script finished! If you expected output, check above.")
+		}
+	}
+}
+
+// createVariablesListFunc returns a function to list variables for a script
+func createVariablesListFunc(name string, config ScriptConfig) func(*cobra.Command, []string) {
+	return func(cmd *cobra.Command, args []string) {
+		varNames := extractVariables(config.Command)
+		if len(varNames) == 0 {
+			warnText("This shortcut has no variables.")
+			return
+		}
+		infoText(fmt.Sprintf("Variables for '%s':", name))
+		for _, varName := range varNames {
+			desc := getVariableDescription(varName, config)
+			successText(fmt.Sprintf("  %s: %s", varName, desc))
 		}
 	}
 }
