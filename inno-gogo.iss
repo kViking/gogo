@@ -37,11 +37,7 @@ Filename: "powershell.exe"; \
   StatusMsg: "Configuring PowerShell profile for GoGoGadget completions..."
 
 [UninstallRun]
-; Warn the user that their saved scripts will be deleted
-Filename: "powershell.exe"; \
-  Parameters: -NoProfile -Command Add-Type -AssemblyName PresentationFramework; [System.Windows.MessageBox]::Show('Uninstalling GoGoGadget will delete your saved scripts and settings in %APPDATA%\\GoGoGadget. If you want to keep them, make a backup now!','GoGoGadget Uninstall Warning',[System.Windows.MessageBoxButton]::OK,[System.Windows.MessageBoxImage]::Warning); \
-  Flags: runhidden; \
-  StatusMsg: "Warning about deletion of saved scripts..."
+; No warning dialog, just clean up profile
 Filename: "powershell.exe"; \
   Parameters: "-NoProfile -ExecutionPolicy Bypass -File '{tmp}\uninstall-profile.ps1' -GadgetPath='{app}\GoGoGadget.ps1'"; \
   Flags: runhidden; \
