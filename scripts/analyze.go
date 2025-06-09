@@ -99,8 +99,6 @@ func Analyze(command ...string) error {
 	tokens := []chroma.Token{}
 	for token := iterator(); token.Type != chroma.EOF.Type; token = iterator() {
 		tokens = append(tokens, token)
-		// Debug: print token type and value
-		fmt.Printf("[DEBUG] Token: Type=%v, Value='%s'\n", token.Type, token.Value)
 	}
 
 	// Suggest variables for string tokens using the same tokens slice
@@ -127,7 +125,6 @@ func Analyze(command ...string) error {
 				// Not a path: suggest each Name token in the buffer
 				for _, t := range pathBuffer {
 					if t.Type == chroma.Name {
-						fmt.Printf("[DEBUG] IsKnownCommand(%q) = %v\n", t.Value, checker.IsKnownCommand(t.Value))
 						if !checker.IsKnownCommand(t.Value) {
 							varCounters["string"]++
 							varName := "string"
@@ -142,6 +139,11 @@ func Analyze(command ...string) error {
 			pathBuffer = nil
 		}
 	}
+
+	// Start spinner for progress indication
+	spinner := GetSpinner("Analyzing command...")
+	spinner.Start()
+	defer spinner.Stop()
 
 	for i, token := range tokens {
 		if token.Type == chroma.Name || token.Type == chroma.Punctuation {
