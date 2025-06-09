@@ -99,6 +99,8 @@ func Analyze(command ...string) error {
 	tokens := []chroma.Token{}
 	for token := iterator(); token.Type != chroma.EOF.Type; token = iterator() {
 		tokens = append(tokens, token)
+		// Debug: print token type and value
+		fmt.Printf("[DEBUG] Token: Type=%v, Value='%s'\n", token.Type, token.Value)
 	}
 
 	// Suggest variables for string tokens using the same tokens slice
