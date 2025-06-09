@@ -161,6 +161,7 @@ func Analyze(command ...string) error {
 			continue
 		}
 		if token.Type == chroma.Name {
+			fmt.Printf("[DEBUG] IsKnownCommand(%q) = %v\n", token.Value, checker.IsKnownCommand(token.Value))
 			if !checker.IsKnownCommand(token.Value) {
 				varCounters["string"]++
 				varName := "string"
