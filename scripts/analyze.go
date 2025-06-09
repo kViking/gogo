@@ -73,7 +73,7 @@ func Analyze(command ...string) error {
 	if len(command) > 0 && strings.TrimSpace(strings.Join(command, " ")) != "" {
 		cmdStr = strings.Join(command, " ")
 	} else {
-		fmt.Println()
+		fmt.Println() // Ensure a blank line before the prompt
 		fmt.Print("Enter your PowerShell command: ")
 		reader := bufio.NewReader(os.Stdin)
 		input, _ := reader.ReadString('\n')
@@ -206,7 +206,7 @@ func Analyze(command ...string) error {
 
 	spinner.Stop()
 
-	fmt.Print("\n") // Begin user entry prompt with a newline
+	fmt.Println() // Ensure a blank line before the output
 	fmt.Println(color.New(color.FgGreen, color.Bold).Sprint("Original command (syntax highlighted):"))
 	if err := quick.Highlight(os.Stdout, cmdStr, "powershell", "terminal16m", "native"); err != nil {
 		return fmt.Errorf("failed to highlight command: %w", err)
@@ -215,16 +215,17 @@ func Analyze(command ...string) error {
 
 	if len(suggestionReplacements) > 0 {
 		fmt.Println(color.New(color.FgGreen, color.Bold).Sprint("Parameterized version (syntax highlighted):"))
-		if err := quick.Highlight(os.Stdout, paramStr, "powershell", "terminal16m", "native"); err != nil {
+		// Print the parameterized version in yellow for visibility
+		if err := quick.Highlight(os.Stdout, paramStr, "powershell", "terminal16m", "monokai"); err != nil {
 			return fmt.Errorf("failed to highlight parameterized command: %w", err)
 		}
 		fmt.Println()
 	}
 
 	if len(suggestions) > 0 {
-		fmt.Println(color.New(color.FgGreen, color.Bold).Sprint("\nSuggested variables:"))
+		fmt.Println(color.New(color.FgHiYellow, color.Bold).Sprint("\nSuggested variables:"))
 		for _, s := range suggestions {
-			fmt.Println("  ", s)
+			fmt.Println(color.New(color.FgHiYellow).Sprint("  ", s))
 		}
 	} else {
 		fmt.Println(color.New(color.FgYellow, color.Bold).Sprint("\nNo suggestions found."))
