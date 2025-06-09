@@ -108,7 +108,7 @@ func Analyze(command ...string) error {
 			return tok
 		}
 	}()
-	formatter := formatters.Get("terminal16m")
+	formatter := formatters.Get("terminal")
 	style := styles.Get("monokai")
 	if err := formatter.Format(os.Stdout, style, highlightIter); err != nil {
 		return fmt.Errorf("failed to format highlighted command: %w", err)
