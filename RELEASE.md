@@ -1,14 +1,14 @@
 # GoGoGadget Release Notes
 
-Welcome to GoGoGadget 0.1.1! 🎉
+Welcome to GoGoGadget 0.1.2! 🎉
 
-This release introduces our first new feature: the **Analyze** command, along with all the original features that make GoGoGadget easy for everyone.
+This release brings you our very first new feature: the **Analyze** command, along with all the original tools that make GoGoGadget simple and helpful for everyone.
 
 ---
 
-## ✨ What's New in 0.1.1
+## ✨ What's New in 0.1.2
 
-- **Analyze Command**: Not sure which parts of your PowerShell command should be variables? The new `analyze` command helps you! Just type your command, and GoGoGadget will highlight the parts that are likely to be user input (like file paths, numbers, or strings) and suggest how to turn them into variables. Great for beginners and anyone who wants to make shortcuts faster and safer.
+- **Analyze Command (Experimental)**: Not sure which parts of your PowerShell command should be variables? The new `analyze` command is here to help! Just type your command, and GoGoGadget will highlight the parts that are likely to be user input (like file paths, numbers, or strings) and suggest how to turn them into variables. This feature is experimental and only provides suggestions—please review and adjust as needed for your use case. It's a great way to get started with shortcuts, especially if you're new to PowerShell or scripting.
 
 ---
 

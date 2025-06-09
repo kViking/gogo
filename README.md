@@ -105,7 +105,7 @@ Or simply:
 gogogadget analyze
 ```
 
-and paste your command when prompted. GoGoGadget will highlight likely user input sections (like file paths, numbers, or strings) and suggest how to turn them into variables. This makes creating shortcuts even easier for everyone!
+and paste your command when prompted. GoGoGadget will highlight likely user input sections (like file paths, numbers, or strings) and suggest how to turn them into variables. **The analyzer is experimental and only provides suggestions—please review and adjust as needed for your use case.** This makes creating shortcuts even easier for everyone!
 
 ---
 
