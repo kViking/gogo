@@ -4,12 +4,13 @@
 AppName=GoGoGadget
 AppVersion={#Version}
 VersionInfoVersion={#Version}
-DefaultDirName={autopf}\GoGoGadget
+DefaultDirName={userappdata}\GoGoGadget
 DefaultGroupName=GoGoGadget
 OutputBaseFilename=GoGoGadget-Installer-{#Version}
 Compression=lzma
 SolidCompression=yes
 ChangesEnvironment=yes
+PrivilegesRequired=lowest
 ; Add these lines to minimize user interaction
 DisableDirPage=yes
 DisableProgramGroupPage=yes
