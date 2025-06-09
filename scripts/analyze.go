@@ -96,6 +96,7 @@ func Analyze(command ...string) error {
 		tokens = append(tokens, token)
 	}
 
+	style := styles.Get("monokai")
 	// For highlighting, create a new iterator from the tokens (Chroma expects func() chroma.Token)
 	fmt.Fprintf(os.Stderr, "[DEBUG] Number of tokens: %d\n", len(tokens))
 	for i := 0; i < len(tokens) && i < 5; i++ {
@@ -118,7 +119,6 @@ func Analyze(command ...string) error {
 		}
 	}()
 	formatter := formatters.Get("terminal16m")
-	style := styles.Get("monokai")
 	fmt.Fprintf(os.Stderr, "[DEBUG] Formatter: terminal16m, Style: monokai\n")
 	if err := formatter.Format(os.Stdout, style, highlightIter); err != nil {
 		return fmt.Errorf("failed to format highlighted command: %w", err)
