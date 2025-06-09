@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"reflect"
 	"strings"
 
 	"github.com/alecthomas/chroma"
@@ -101,25 +100,22 @@ func Analyze(command ...string) error {
 	monokai := styles.Get("monokai")
 	var patchedStyle *chroma.Style
 	if monokai != nil {
-		// Use reflection to access the private entries field as a workaround
+		// Use a fallback: manually copy the most important style entries by using the style's Builder API
 		entries := chroma.StyleEntries{}
-		monokaiVal := reflect.ValueOf(monokai).Elem()
-		entriesField := monokaiVal.FieldByName("entries")
-		if entriesField.IsValid() {
-			for _, key := range entriesField.MapKeys() {
-				val := entriesField.MapIndex(key)
-				// The value is a string, but chroma.MustNewStyle expects StyleEntries as map[TokenType]string
-				entries[key.Interface().(chroma.TokenType)] = val.Interface().(string)
-			}
-			// Map additional token types to more visible styles
-			entries[chroma.NameBuiltin] = entries[chroma.Keyword]
-			entries[chroma.NameFunction] = entries[chroma.Keyword]
-			entries[chroma.Name] = entries[chroma.LiteralString] // Make plain names more visible
-			// You can add more mappings as needed
-			patchedStyle = chroma.MustNewStyle("monokai-patched", entries)
-		} else {
-			patchedStyle = monokai
-		}
+		// Manually map the most important token types for PowerShell highlighting
+		entries[chroma.Keyword] = "bold #f92672"
+		entries[chroma.NameBuiltin] = "bold #f92672"
+		entries[chroma.NameFunction] = "bold #f92672"
+		entries[chroma.Name] = "#a6e22e"
+		entries[chroma.LiteralString] = "#e6db74"
+		entries[chroma.LiteralNumber] = "#ae81ff"
+		entries[chroma.NameVariable] = "#fd971f"
+		entries[chroma.Punctuation] = "#f8f8f2"
+		entries[chroma.Text] = "#f8f8f2"
+		entries[chroma.Operator] = "#f8f8f2"
+		entries[chroma.Comment] = "italic #75715e"
+		// Use the rest of monokai for fallback
+		patchedStyle = chroma.MustNewStyle("monokai-patched", entries)
 	} else {
 		patchedStyle = styles.Fallback
 	}
