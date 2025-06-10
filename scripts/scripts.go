@@ -167,7 +167,7 @@ func createScriptRunFunc(name string, config ScriptConfig) func(*cobra.Command, 
 		}
 		config, ok := scripts[name]
 		if !ok {
-			errorText(fmt.Sprintf("❌ Script '%s' not found.\n", name))
+			errorText(fmt.Sprintf("❌ Gadget '%s' not found.\n", name))
 			return
 		}
 		varNames := extractVariables(config.Command)
@@ -197,21 +197,21 @@ func createScriptRunFunc(name string, config ScriptConfig) func(*cobra.Command, 
 		// Create and run the script
 		scriptContent := fmt.Sprintf("# %s\n%s\n", config.Description, psCommand)
 		if err := runPowerShellScript(name, scriptContent); err != nil {
-			errorText("❌ Error running your script. Please check your command and variable values.")
+			errorText("❌ Error running your gadget. Please check your command and variable values.")
 			errorText(fmt.Sprintf("Details: %v", err))
 			_ = cmd.Help()
 		} else {
-			successText("✅ Script finished! If you expected output, check above.")
+			successText("✅ Gadget finished! If you expected output, check above.")
 		}
 	}
 }
 
-// createVariablesListFunc returns a function to list variables for a script
+// createVariablesListFunc returns a function to list variables for a gadget
 func createVariablesListFunc(name string, config ScriptConfig) func(*cobra.Command, []string) {
 	return func(cmd *cobra.Command, args []string) {
 		varNames := extractVariables(config.Command)
 		if len(varNames) == 0 {
-			warnText("This shortcut has no variables.")
+			warnText("This gadget has no variables.")
 			return
 		}
 		infoText(fmt.Sprintf("Variables for '%s':", name))

@@ -76,7 +76,7 @@ func Analyze(command ...string) error {
 		cmdStr = strings.Join(command, " ")
 	} else {
 		fmt.Fprintln(out) // Ensure a blank line before the prompt
-		fmt.Fprint(out, "Enter your PowerShell command: ")
+		fmt.Fprint(out, "\x1b[36m🔍 Enter the PowerShell command to analyze: \x1b[0m")
 		reader := bufio.NewReader(os.Stdin)
 		input, _ := reader.ReadString('\n')
 		cmdStr = strings.TrimSpace(input)
@@ -224,6 +224,20 @@ func Analyze(command ...string) error {
 	} else {
 		fmt.Fprintf(out, "\n\x1b[1;33mNo suggestions found.\x1b[0m\n")
 	}
+
+	// Prompt to save as a command
+	reader := bufio.NewReader(os.Stdin)
+	fmt.Fprint(out, "\nWould you like to save this parameterization as a gadget? Y/N: ")
+	resp, _ := reader.ReadString('\n')
+	resp = strings.TrimSpace(strings.ToLower(resp))
+	if resp == "y" || resp == "yes" {
+		// Call the add process (reuse NewAddCommand logic)
+		// Simulate: GoGoGadget add --command <paramStr>
+		addCmd := NewAddCommand()
+		addCmd.Flags().Set("command", paramStr)
+		addCmd.Run(addCmd, []string{})
+	}
+
 	return nil
 }
 

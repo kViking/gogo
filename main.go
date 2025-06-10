@@ -56,6 +56,15 @@ func main() {
 GoGoGadget is a CLI tool for creating, managing, and running PowerShell script shortcuts with variable support.
 
 Use 'GoGoGadget add' to create a new shortcut, 'GoGoGadget list' to see all, or run your scripts directly as subcommands!`,
+		Run: func(cmd *cobra.Command, args []string) {
+			out := colorable.NewColorableStdout()
+			fmt.Fprintln(out)
+			fmt.Fprintln(out, "\x1b[1;36mGoGoGadget\x1b[0m: \x1b[1;37mRun your \x1b[1;35mgadgets\x1b[0m\x1b[1;37m (user-defined commands) easily!\x1b[0m")
+			fmt.Fprintln(out)
+			fmt.Fprintln(out, "\x1b[1;32m•\x1b[0m Use '\x1b[1;33mgogo add\x1b[0m' to create a new gadget, '\x1b[1;33mgogo list\x1b[0m' to see all gadgets, '\x1b[1;33mgogo edit\x1b[0m' to modify a gadget, and '\x1b[1;33mgogo delete\x1b[0m' to remove a gadget.")
+			fmt.Fprintln(out, "\x1b[1;32m•\x1b[0m Each gadget runs a \x1b[1;36mPowerShell\x1b[0m command and can use variables (e.g., \x1b[1;35m{{variable}}\x1b[0m) for customization.")
+			fmt.Fprintln(out)
+		},
 	}
 
 	rootCmd.AddCommand(scripts.NewAddCommand())

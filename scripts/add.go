@@ -16,7 +16,7 @@ func NewAddCommand() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "add",
-		Short: "Add a new script shortcut",
+		Short: "Add a new GoGoGadget gadget",
 		PreRun: func(cmd *cobra.Command, args []string) {
 			// If --command is provided, dynamically add flags for variables
 			c, _ := cmd.Flags().GetString("command")
@@ -30,26 +30,41 @@ func NewAddCommand() *cobra.Command {
 			scripts, _ := loadScripts()
 			reader := bufio.NewReader(os.Stdin)
 
+			out := colorable.NewColorableStdout()
+			fmt.Fprintln(out) // Blank line before add process
+			colorText.Cyan("Add a new GoGoGadget gadget (user-defined command):")
+			fmt.Fprintln(out)
+
 			// Get command
 			command, _ = cmd.Flags().GetString("command")
 			if command == "" {
-				fmt.Print("📝 Enter PowerShell command (use {{VARNAME}} for variables): ")
+				fmt.Fprint(out, "\x1b[36m📝 Enter the PowerShell command this gadget will run (you can use \x1b[1;35m{{variable}}\x1b[0m\x1b[36m for variables you want to fill in each time): \x1b[0m")
 				c, _ := reader.ReadString('\n')
 				command = strings.TrimSpace(c)
 			}
 
-			// Get script name
+			// Get gadget name
 			scriptName, _ = cmd.Flags().GetString("scriptname")
-			if scriptName == "" {
-				fmt.Print("🔖 Enter script name: ")
-				n, _ := reader.ReadString('\n')
-				scriptName = strings.TrimSpace(n)
+			nameRe := regexp.MustCompile(`^[A-Za-z0-9_\-]+$`)
+			for {
+				if scriptName == "" {
+					fmt.Fprint(out, "\x1b[36m🔖 Enter gadget name: \x1b[0m")
+					n, _ := reader.ReadString('\n')
+					scriptName = strings.TrimSpace(n)
+				}
+				// Validate: no spaces, no punctuation
+				if !nameRe.MatchString(scriptName) {
+					colorText.Yellow("⚠️  Gadget names cannot contain spaces or punctuation. Use only letters, numbers, dashes, or underscores. Please enter a new name.")
+					scriptName = ""
+					continue
+				}
+				break
 			}
 
 			// Get description
 			desc, _ = cmd.Flags().GetString("desc")
 			if desc == "" {
-				fmt.Print("💡 Enter script description: ")
+				fmt.Fprint(out, "\x1b[36m💡 Enter gadget description: \x1b[0m")
 				d, _ := reader.ReadString('\n')
 				desc = strings.TrimSpace(d)
 			}
@@ -58,7 +73,7 @@ func NewAddCommand() *cobra.Command {
 			for _, v := range extractVariables(command) {
 				val, _ := cmd.Flags().GetString(v)
 				if val == "" {
-					fmt.Printf("✏️  Describe variable '%s': ", v)
+					fmt.Fprintf(out, "\x1b[33m✏️  Describe variable '%s': \x1b[0m", v)
 					vd, _ := reader.ReadString('\n')
 					val = strings.TrimSpace(vd)
 				}
@@ -66,7 +81,7 @@ func NewAddCommand() *cobra.Command {
 			}
 
 			if scriptName == "" || command == "" {
-				fmt.Fprintln(colorable.NewColorableStderr(), "\x1b[31m❌ Name and command are required.\x1b[0m")
+				fmt.Fprintln(colorable.NewColorableStderr(), "\x1b[31m❌ Gadget name and command are required.\x1b[0m")
 				return
 			}
 			scripts[scriptName] = ScriptConfig{
@@ -75,16 +90,18 @@ func NewAddCommand() *cobra.Command {
 				Variables:   variables,
 			}
 			if err := saveScripts(scripts); err != nil {
-				fmt.Fprintln(colorable.NewColorableStderr(), "\x1b[31m❌ Error saving script:\x1b[0m", err)
+				fmt.Fprintln(colorable.NewColorableStderr(), "\x1b[31m❌ Error saving gadget:\x1b[0m", err)
 				return
 			}
-			colorText.Green("✅ Script added!")
+			fmt.Fprintln(out)
+			colorText.Green("✅ Gadget added!")
+			fmt.Fprintln(out)
 		},
 	}
 
-	cmd.Flags().StringVar(&scriptName, "scriptname", "", "Name of the script")
+	cmd.Flags().StringVar(&scriptName, "scriptname", "", "Name of the gadget")
 	cmd.Flags().StringVar(&command, "command", "", "PowerShell command (use {{VARNAME}} for variables)")
-	cmd.Flags().StringVar(&desc, "desc", "", "Script description")
+	cmd.Flags().StringVar(&desc, "desc", "", "Gadget description")
 
 	return cmd
 }

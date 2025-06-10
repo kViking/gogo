@@ -15,19 +15,19 @@ func AddEditCommand(root *cobra.Command) {
 	var newDescFlag string
 	var newCmdFlag string
 	var editCmd = &cobra.Command{
-		Use:   "edit [script name]",
-		Short: "Edit an existing script shortcut",
+		Use:   "edit [gadget name]",
+		Short: "Edit an existing gadget",
 		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			scripts, err := loadScripts()
 			if err != nil {
-				colorText.Red("❌ Could not load scripts.")
+				colorText.Red("❌ Could not load gadgets.")
 				return
 			}
 			name := args[0]
 			script, ok := scripts[name]
 			if !ok {
-				colorText.Red(fmt.Sprintf("❌ Script '%s' not found.", name))
+				colorText.Red(fmt.Sprintf("❌ Gadget '%s' not found.", name))
 				return
 			}
 
@@ -39,11 +39,11 @@ func AddEditCommand(root *cobra.Command) {
 					delete(scripts, name)
 					name = newName
 					_ = saveScripts(scripts)
-					colorText.Green("✅ Script name updated.")
+					colorText.Green("✅ Gadget name updated.")
 					return
 				} else if newName == "" {
 					reader := bufio.NewReader(os.Stdin)
-					fmt.Printf("Current: %s\nEnter new name: ", name)
+					fmt.Printf("Current: %s\nEnter new gadget name: ", name)
 					input, _ := reader.ReadString('\n')
 					input = strings.TrimSpace(input)
 					if input != "" && input != name {
@@ -51,7 +51,7 @@ func AddEditCommand(root *cobra.Command) {
 						delete(scripts, name)
 						name = input
 						_ = saveScripts(scripts)
-						colorText.Green("✅ Script name updated.")
+						colorText.Green("✅ Gadget name updated.")
 					}
 					return
 				}
@@ -62,18 +62,18 @@ func AddEditCommand(root *cobra.Command) {
 					script.Description = newDesc
 					scripts[name] = script
 					_ = saveScripts(scripts)
-					colorText.Green("✅ Script description updated.")
+					colorText.Green("✅ Gadget description updated.")
 					return
 				} else {
 					reader := bufio.NewReader(os.Stdin)
-					fmt.Printf("Current: %s\nEnter new description: ", script.Description)
+					fmt.Printf("Current: %s\nEnter new gadget description: ", script.Description)
 					input, _ := reader.ReadString('\n')
 					input = strings.TrimSpace(input)
 					if input != "" {
 						script.Description = input
 						scripts[name] = script
 						_ = saveScripts(scripts)
-						colorText.Green("✅ Script description updated.")
+						colorText.Green("✅ Gadget description updated.")
 					}
 					return
 				}
@@ -84,18 +84,18 @@ func AddEditCommand(root *cobra.Command) {
 					script.Command = newCmd
 					scripts[name] = script
 					_ = saveScripts(scripts)
-					colorText.Green("✅ Script command updated.")
+					colorText.Green("✅ Gadget command updated.")
 					return
 				} else {
 					reader := bufio.NewReader(os.Stdin)
-					fmt.Printf("Current: %s\nEnter new command: ", script.Command)
+					fmt.Printf("Current: %s\nEnter new PowerShell command this gadget will run: ", script.Command)
 					input, _ := reader.ReadString('\n')
 					input = strings.TrimSpace(input)
 					if input != "" {
 						script.Command = input
 						scripts[name] = script
 						_ = saveScripts(scripts)
-						colorText.Green("✅ Script command updated.")
+						colorText.Green("✅ Gadget command updated.")
 					}
 					return
 				}
@@ -103,7 +103,7 @@ func AddEditCommand(root *cobra.Command) {
 
 			reader := bufio.NewReader(os.Stdin)
 			for {
-				fmt.Printf("\nEditing script: %s\n", name)
+				fmt.Printf("\nEditing gadget: %s\n", name)
 				fmt.Printf("1. Name: %s\n", name)
 				fmt.Printf("2. Description: %s\n", script.Description)
 				fmt.Printf("3. Command: %s\n", script.Command)
@@ -121,7 +121,7 @@ func AddEditCommand(root *cobra.Command) {
 				choice := strings.TrimSpace(choiceRaw)
 				switch choice {
 				case "1":
-					fmt.Printf("Current: %s\nEnter new name: ", name)
+					fmt.Printf("Current: %s\nEnter new gadget name: ", name)
 					newName, _ := reader.ReadString('\n')
 					newName = strings.TrimSpace(newName)
 					if newName != "" && newName != name {
@@ -130,12 +130,12 @@ func AddEditCommand(root *cobra.Command) {
 						name = newName
 					}
 				case "2":
-					fmt.Printf("Current: %s\nEnter new description: ", script.Description)
+					fmt.Printf("Current: %s\nEnter new gadget description: ", script.Description)
 					desc, _ := reader.ReadString('\n')
 					script.Description = strings.TrimSpace(desc)
 					scripts[name] = script
 				case "3":
-					fmt.Printf("Current: %s\nEnter new command: ", script.Command)
+					fmt.Printf("Current: %s\nEnter new PowerShell command this gadget will run: ", script.Command)
 					cmdStr, _ := reader.ReadString('\n')
 					cmdStr = strings.TrimSpace(cmdStr)
 					if cmdStr != "" {
@@ -144,7 +144,7 @@ func AddEditCommand(root *cobra.Command) {
 					}
 				case "0":
 					_ = saveScripts(scripts)
-					colorText.Green("✅ Script updated.")
+					colorText.Green("✅ Gadget updated!")
 					return
 				default:
 					// Check if editing a variable description
@@ -163,8 +163,8 @@ func AddEditCommand(root *cobra.Command) {
 			}
 		},
 	}
-	editCmd.Flags().StringVar(&newNameFlag, "name", "", "Edit the script's name directly")
-	editCmd.Flags().StringVar(&newDescFlag, "description", "", "Edit the script's description directly")
-	editCmd.Flags().StringVar(&newCmdFlag, "command", "", "Edit the script's command directly")
+	editCmd.Flags().StringVar(&newNameFlag, "name", "", "Edit the gadget's name directly")
+	editCmd.Flags().StringVar(&newDescFlag, "description", "", "Edit the gadget's description directly")
+	editCmd.Flags().StringVar(&newCmdFlag, "command", "", "Edit the gadget's command directly")
 	root.AddCommand(editCmd)
 }

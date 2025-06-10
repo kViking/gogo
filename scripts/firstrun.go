@@ -63,7 +63,7 @@ func getUserConfirmation() {
 		// Update settings file
 		updateSettingsFile()
 
-		colorText.Green("✅ You're all set up! Run GoGoGadget --help to see available commands, or GoGoGadget [command] --help to see help for a command")
+		colorText.Green("✅ You're all set up! Run GoGoGadget --help to see available commands, or GoGoGadget [gadget] --help to see help for a gadget")
 		os.Exit(0) // Exit with success code
 	}
 
@@ -86,11 +86,11 @@ You are running GoGoGadget for the first time! This is exciting! You need to kno
 
 	// Show the first sentence of point 1 in bright red
 	fmt.Print("1. ")
-	fmt.Print("\x1b[1;91mGoGoGadget does NOT have any checks for your PowerShell scripts.\x1b[0m")
+	fmt.Print("\x1b[1;91mGoGoGadget does NOT have any checks for your PowerShell commands.\x1b[0m")
 
 	// Define the rest of the message as a string literal
-	restOfMsg := ` It will run them as-is, with variables replaced exactly as you specify. Make sure you test your scripts before saving them with GoGoGadget!
-2. Your scripts are stored in a json file in the app directory (wherever you installed GoGoGadget). You can edit this file directly if you want without fear of breaking anything, but there are robust built in tools to edit the shortcuts as well. GUI is planned for a future release.
+	restOfMsg := ` It will run them as-is, with variables replaced exactly as you specify. Make sure you test your commands before saving them with GoGoGadget!
+2. Your gadgets are stored in a json file in your $LOCALAPPDATA directory (check yours with \x1b[1;100m\x1b[97m$env:LOCALAPPDATA\x1b[0m). You can edit this file directly if you want without fear of breaking anything, but there are robust built in tools to edit the shortcuts as well. GUI is planned for a future release.
 
 Print this message again with 'GoGoGadget first-run' if you need to see it again.
 You can always run 'GoGoGadget help' for instructions on how to use the tool.
@@ -123,11 +123,11 @@ You are running GoGoGadget for the first time! This is exciting! You need to kno
 
 			// Show the first sentence of point 1 in bright red
 			fmt.Print("1. ")
-			fmt.Print("\x1b[1;91mGoGoGadget does NOT have any checks for your PowerShell scripts.\x1b[0m")
+			fmt.Print("\x1b[1;91mGoGoGadget does NOT have any checks for your PowerShell commands.\x1b[0m")
 
 			// Define the rest of the message as a string literal
-			restOfMsg := ` It will run them as-is, with variables replaced exactly as you specify. Make sure you test your scripts before saving them with GoGoGadget!
-2. Your scripts are stored in a json file in the app directory (wherever you installed GoGoGadget). You can edit this file directly if you want without fear of breaking anything, but there are robust built in tools to edit the shortcuts as well. GUI is planned for a future release.
+			restOfMsg := ` It will run them as-is, with variables replaced exactly as you specify. Make sure you test your commands before saving them with GoGoGadget!
+2. Your gadgets are stored in a json file in the app directory (wherever you installed GoGoGadget). You can edit this file directly if you want without fear of breaking anything, but there are robust built in tools to edit the shortcuts as well. GUI is planned for a future release.
 
 Print this message again with 'GoGoGadget first-run' if you need to see it again.
 You can always run 'GoGoGadget help' for instructions on how to use the tool.
