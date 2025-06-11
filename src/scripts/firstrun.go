@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"gogo/src/style"
+
 	"github.com/spf13/cobra"
 )
 
@@ -43,15 +45,30 @@ func updateSettingsFile() {
 	}
 }
 
+// CheckFirstRun checks if this is the user's first run and shows the message if so
+func CheckFirstRun() {
+	settingsPath := getSettingsPath()
+	settings := Settings{FirstRun: true}
+	if _, err := os.Stat(settingsPath); err == nil {
+		data, err := os.ReadFile(settingsPath)
+		if err == nil && len(data) > 0 {
+			_ = json.Unmarshal(data, &settings)
+		}
+	}
+	if settings.FirstRun {
+		ShowFirstRunMessage()
+	}
+}
+
 // getUserConfirmation asks the user for confirmation and exits
 // Exits with code 0 if confirmed, code 1 if not confirmed
 // Updates the settings file to mark firstRun as false if confirmed
 func getUserConfirmation() {
 	reader := bufio.NewReader(os.Stdin)
-	fmt.Print("Do you understand and wish to continue? (y/yes): ")
+	fmt.Print(style.PromptStyle.Render("Do you understand and wish to continue? (y/yes): "))
 	response, err := reader.ReadString('\n')
 	if err != nil {
-		fmt.Println("Error reading response:", err)
+		fmt.Println(style.ErrorStyle.Render("Error reading response:"), err)
 		os.Exit(1)
 	}
 
@@ -63,12 +80,13 @@ func getUserConfirmation() {
 		// Update settings file
 		updateSettingsFile()
 
-		colorText.Green("✅ You're all set up! Run GoGoGadget --help to see available commands, or GoGoGadget [gadget] --help to see help for a gadget")
+		// Use styles from style.go for success message
+		fmt.Println(style.SuccessStyle.Render("✅ You're all set up! Run GoGoGadget --help to see available commands, or GoGoGadget [gadget] --help to see help for a gadget"))
 		os.Exit(0) // Exit with success code
 	}
 
 	// If the user doesn't confirm, exit with error code
-	colorText.Yellow("⚠️ Operation cancelled")
+	fmt.Println(style.InfoStyle.Render("⚠️ Operation cancelled"))
 	os.Exit(1)
 }
 
@@ -76,26 +94,22 @@ func getUserConfirmation() {
 // and asks for user confirmation before proceeding
 func ShowFirstRunMessage() {
 	// Define the warning message as a string literal
-	warningMsg := `*** ------------------------------- ***
-You are running GoGoGadget for the first time! This is exciting! You need to know a couple of things:
-
-`
+	warningMsg := style.HeaderStyle.Render("*** ------------------------------- ***\nYou are running GoGoGadget for the first time! This is exciting! You need to know a couple of things:\n\n")
 
 	// Print the first part of the message
 	fmt.Print(warningMsg)
 
 	// Show the first sentence of point 1 in bright red
-	fmt.Print("1. ")
-	fmt.Print("\x1b[1;91mGoGoGadget does NOT have any checks for your PowerShell commands.\x1b[0m")
+	fmt.Print(style.ErrorStyle.Render("GoGoGadget does NOT have any checks for your PowerShell commands."))
 
 	// Define the rest of the message as a string literal
-	restOfMsg := ` It will run them as-is, with variables replaced exactly as you specify. Make sure you test your commands before saving them with GoGoGadget!
-2. Your gadgets are stored in a json file in your $LOCALAPPDATA directory (check yours with \x1b[1;100m\x1b[97m$env:LOCALAPPDATA\x1b[0m). You can edit this file directly if you want without fear of breaking anything, but there are robust built in tools to edit the shortcuts as well. GUI is planned for a future release.
+	restOfMsg := style.InfoStyle.Render(` It will run them as-is, with variables replaced exactly as you specify. Make sure you test your commands before saving them with GoGoGadget!
+2. Your gadgets are stored in a json file in your $LOCALAPPDATA directory (check yours with $env:LOCALAPPDATA). You can edit this file directly if you want without fear of breaking anything, but there are robust built in tools to edit the shortcuts as well. GUI is planned for a future release.
 
 Print this message again with 'GoGoGadget first-run' if you need to see it again.
 You can always run 'GoGoGadget help' for instructions on how to use the tool.
 *** ------------------------------- ***
-`
+`)
 	fmt.Print(restOfMsg)
 
 	// Get user confirmation, will exit if not confirmed
@@ -115,39 +129,61 @@ This command is useful if you want to review the warning message again.`,
 
 			// First show the warning message
 			// Define the warning message as a string literal
-			warningMsg := `*** ------------------------------- ***
-You are running GoGoGadget for the first time! This is exciting! You need to know a couple of things:
-
-`
+			warningMsg := style.HeaderStyle.Render("*** ------------------------------- ***\nYou are running GoGoGadget for the first time! This is exciting! You need to know a couple of things:\n\n")
 			fmt.Print(warningMsg)
 
 			// Show the first sentence of point 1 in bright red
-			fmt.Print("1. ")
-			fmt.Print("\x1b[1;91mGoGoGadget does NOT have any checks for your PowerShell commands.\x1b[0m")
+			fmt.Print(style.ErrorStyle.Render("GoGoGadget does NOT have any checks for your PowerShell commands."))
 
 			// Define the rest of the message as a string literal
-			restOfMsg := ` It will run them as-is, with variables replaced exactly as you specify. Make sure you test your commands before saving them with GoGoGadget!
+			restOfMsg := style.InfoStyle.Render(` It will run them as-is, with variables replaced exactly as you specify. Make sure you test your commands before saving them with GoGoGadget!
 2. Your gadgets are stored in a json file in the app directory (wherever you installed GoGoGadget). You can edit this file directly if you want without fear of breaking anything, but there are robust built in tools to edit the shortcuts as well. GUI is planned for a future release.
 
 Print this message again with 'GoGoGadget first-run' if you need to see it again.
 You can always run 'GoGoGadget help' for instructions on how to use the tool.
 *** ------------------------------- ***
-`
+`)
 			fmt.Print(restOfMsg)
 
 			// For this command, we get confirmation but don't exit
 			reader := bufio.NewReader(os.Stdin)
-			fmt.Print("Do you understand? (y/yes): ")
+			fmt.Print(style.PromptStyle.Render("Do you understand? (y/yes): "))
 			response, _ := reader.ReadString('\n')
 			response = strings.TrimSpace(strings.ToLower(response))
 
 			if response == "y" || response == "yes" {
-				colorText.Green("✅ Continuing with GoGoGadget")
+				fmt.Println(style.SuccessStyle.Render("✅ Continuing with GoGoGadget"))
 			} else {
-				colorText.Yellow("⚠️ Please review the information above")
+				fmt.Println(style.InfoStyle.Render("⚠️ Please review the information above"))
 			}
 		},
 	}
 
 	return cmd
+}
+
+type firstrunModel struct {
+	errorMsg string
+	success  bool
+}
+
+func (m firstrunModel) View() string {
+	header := style.HeaderStyle.Render("Welcome to GoGoGadget!")
+	errorStyle := style.ErrorStyle
+	successStyle := style.SuccessStyle
+	help := style.MenuHelpStyle.Render("Enter: Confirm  Esc: Cancel  ←/→: Move")
+
+	var s string
+	s += header + "\n\n"
+	if m.errorMsg != "" {
+		s += errorStyle.Render(m.errorMsg) + "\n\n"
+	}
+	if m.success {
+		s += successStyle.Render("🎉 Setup complete!") + "\n\n"
+		s += help + "\n"
+		return s
+	}
+	s += style.InfoStyle.Render("Let's get started by adding your first gadget!")
+	s += "\n\n" + help
+	return s
 }

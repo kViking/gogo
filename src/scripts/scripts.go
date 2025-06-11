@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/mattn/go-colorable"
@@ -21,7 +22,6 @@ var (
 	errorText   = func(msg string) { fmt.Fprintln(colorable.NewColorableStdout(), "\x1b[31m"+msg+"\x1b[0m") }
 	successText = func(msg string) { fmt.Fprintln(colorable.NewColorableStdout(), "\x1b[32m"+msg+"\x1b[0m") }
 	infoText    = func(msg string) { fmt.Fprintln(colorable.NewColorableStdout(), "\x1b[36m"+msg+"\x1b[0m") }
-	warnText    = func(msg string) { fmt.Fprintln(colorable.NewColorableStdout(), "\x1b[33m"+msg+"\x1b[0m") }
 )
 
 type ScriptConfig struct {
@@ -44,8 +44,8 @@ func getUserScriptsPath() string {
 	return filepath.Join(dir, "user_scripts.json")
 }
 
-// loadScripts loads all scripts from the user_scripts.json file in user config dir
-func loadScripts() (Scripts, error) {
+// LoadScripts loads all scripts from the user_scripts.json file in user config dir
+func LoadScripts() (Scripts, error) {
 	scriptsPath := getUserScriptsPath()
 	if _, err := os.Stat(scriptsPath); os.IsNotExist(err) {
 		emptyScripts := make(Scripts)
@@ -65,8 +65,8 @@ func loadScripts() (Scripts, error) {
 	return scripts, nil
 }
 
-// saveScripts saves all scripts to the user_scripts.json file in user config dir
-func saveScripts(scripts Scripts) error {
+// SaveScripts saves all scripts to the user_scripts.json file in user config dir
+func SaveScripts(scripts Scripts) error {
 	data, err := json.MarshalIndent(scripts, "", "  ")
 	if err != nil {
 		return err
@@ -74,8 +74,8 @@ func saveScripts(scripts Scripts) error {
 	return os.WriteFile(getUserScriptsPath(), data, 0644)
 }
 
-// getVariableDescription returns the description for a variable or a default
-func getVariableDescription(varName string, config ScriptConfig) string {
+// GetVariableDescription returns the description for a variable or a default
+func GetVariableDescription(varName string, config ScriptConfig) string {
 	desc := config.Variables[varName]
 	if desc == "" {
 		desc = fmt.Sprintf(DefaultDesc, varName)
@@ -85,7 +85,7 @@ func getVariableDescription(varName string, config ScriptConfig) string {
 
 // promptForVariable asks the user to input a value for a variable
 func promptForVariable(varName string, config ScriptConfig) string {
-	desc := getVariableDescription(varName, config)
+	desc := GetVariableDescription(varName, config)
 	infoText(fmt.Sprintf("Enter %s: ", desc))
 
 	var value string
@@ -120,16 +120,27 @@ func runPowerShellScript(scriptName, content string) error {
 	return cmd.Run()
 }
 
+// GetGadgetNames returns a sorted list of all gadget names
+func GetGadgetNames() []string {
+	scriptsMap, _ := LoadScripts()
+	var names []string
+	for name := range scriptsMap {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
 // AddScriptCommands dynamically adds all script shortcuts as subcommands
 func AddScriptCommands(root *cobra.Command) {
-	scripts, err := loadScripts()
+	scripts, err := LoadScripts()
 	if err != nil {
 		errorText(fmt.Sprintf("❌ Error loading user_scripts.json: %v", err))
 		return // No scripts yet
 	}
 
 	for name, config := range scripts {
-		varNames := extractVariables(config.Command)
+		varNames := ExtractVariables(config.Command)
 
 		scriptCmd := &cobra.Command{
 			Use:   name,
@@ -146,7 +157,7 @@ Example usage:
 
 		// Add flags for each variable
 		for _, varName := range varNames {
-			desc := getVariableDescription(varName, config)
+			desc := GetVariableDescription(varName, config)
 			scriptCmd.Flags().String(varName, "", desc)
 		}
 
@@ -160,7 +171,7 @@ func createScriptRunFunc(name string, config ScriptConfig) func(*cobra.Command, 
 		vars := make(map[string]string)
 
 		// Always get the latest variable list from the script definition
-		scripts, err := loadScripts()
+		scripts, err := LoadScripts()
 		if err != nil {
 			errorText(fmt.Sprintf("❌ Error loading user_scripts.json: %v", err))
 			return
@@ -170,7 +181,7 @@ func createScriptRunFunc(name string, config ScriptConfig) func(*cobra.Command, 
 			errorText(fmt.Sprintf("❌ Gadget '%s' not found.\n", name))
 			return
 		}
-		varNames := extractVariables(config.Command)
+		varNames := ExtractVariables(config.Command)
 
 		// First, try to match provided args to variables by order
 		for i, varName := range varNames {
@@ -188,14 +199,15 @@ func createScriptRunFunc(name string, config ScriptConfig) func(*cobra.Command, 
 			}
 		}
 
-		// Replace variables in the command
-		psCommand := config.Command
-		for varName, value := range vars {
-			psCommand = strings.ReplaceAll(psCommand, "{{"+varName+"}}", value)
-		}
+		// Replace variables in the command using the centralized helper
+		psCommand := ReplaceVariables(config.Command, vars)
 
-		// Create and run the script
-		scriptContent := fmt.Sprintf("# %s\n%s\n", config.Description, psCommand)
+		// Use strings.Builder for scriptContent
+		var sb strings.Builder
+		sb.WriteString("# " + config.Description + "\n")
+		sb.WriteString(psCommand + "\n")
+		scriptContent := sb.String()
+
 		if err := runPowerShellScript(name, scriptContent); err != nil {
 			errorText("❌ Error running your gadget. Please check your command and variable values.")
 			errorText(fmt.Sprintf("Details: %v", err))
@@ -206,18 +218,36 @@ func createScriptRunFunc(name string, config ScriptConfig) func(*cobra.Command, 
 	}
 }
 
-// createVariablesListFunc returns a function to list variables for a gadget
-func createVariablesListFunc(name string, config ScriptConfig) func(*cobra.Command, []string) {
-	return func(cmd *cobra.Command, args []string) {
-		varNames := extractVariables(config.Command)
-		if len(varNames) == 0 {
-			warnText("This gadget has no variables.")
-			return
-		}
-		infoText(fmt.Sprintf("Variables for '%s':", name))
-		for _, varName := range varNames {
-			desc := getVariableDescription(varName, config)
-			successText(fmt.Sprintf("  %s: %s", varName, desc))
-		}
+// NewRootCommand returns the root cobra.Command for CLI mode (verb-first)
+func NewRootCommand() *cobra.Command {
+	rootCmd := &cobra.Command{
+		Use:   "gogogadget",
+		Short: "GoGoGadget: Run your favorite PowerShell commands with easy shortcuts!",
+		Long:  "GoGoGadget lets you save, run, and manage PowerShell command shortcuts with variables.",
 	}
+
+	// List gadgets
+	rootCmd.AddCommand(InitialListGadgetsCommand())
+
+	// Add a new gadget
+	rootCmd.AddCommand(InitialAddGadgetCommand())
+
+	// Delete a gadget
+	rootCmd.AddCommand(InitialDeleteGadgetCommand())
+
+	// Edit a gadget (launches TUI for editing that gadget)
+	rootCmd.AddCommand(InitialEditGadgetCommand())
+
+	// Alias: 'list' for 'gadgets'
+	rootCmd.AddCommand(&cobra.Command{
+		Use:        "list",
+		Short:      "Alias for 'gadgets'",
+		Deprecated: "use 'gadgets' instead",
+		Run: func(cmd *cobra.Command, args []string) {
+			cmd.Parent().SetArgs([]string{"gadgets"})
+			cmd.Parent().Execute()
+		},
+	})
+
+	return rootCmd
 }
