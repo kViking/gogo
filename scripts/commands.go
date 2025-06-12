@@ -103,10 +103,6 @@ func NewEditCommand() *cobra.Command {
 		Short: "Edit an existing gadget",
 		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
-			if len(args) == 0 {
-				cmd.Help()
-				return
-			}
 			store, err := NewGadgetStore()
 			if err != nil {
 				colorText.Red("\u274c Could not load gadgets.")
@@ -122,6 +118,10 @@ func NewEditCommand() *cobra.Command {
 			}
 			if cmd.Flags().Changed("command") {
 				updates["command"] = newCmdFlag
+			}
+			if len(updates) == 0 {
+				cmd.Help()
+				return
 			}
 			err = EditGadget(store, name, updates)
 			if err != nil {
