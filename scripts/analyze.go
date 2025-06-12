@@ -15,9 +15,7 @@ import (
 )
 
 var (
-	psCmdChecker     *PowerShellCommandChecker
-	psCmdCheckerInit bool
-	refreshCmdsFlag  bool
+	refreshCmdsFlag bool
 )
 
 // PowerShellCommandChecker caches the list of known PowerShell commands for efficient lookup
@@ -42,29 +40,10 @@ func NewPowerShellCommandChecker() *PowerShellCommandChecker {
 	return &PowerShellCommandChecker{known: m}
 }
 
-func getPowerShellCommandChecker() *PowerShellCommandChecker {
-	if !psCmdCheckerInit {
-		psCmdChecker = NewPowerShellCommandChecker()
-		psCmdCheckerInit = true
-	}
-	return psCmdChecker
-}
-
-func refreshPowerShellCommandChecker() {
-	psCmdChecker = NewPowerShellCommandChecker()
-	psCmdCheckerInit = true
-}
-
-func (p *PowerShellCommandChecker) IsKnown(cmd string) bool {
-	cmd = strings.ToLower(cmd)
-	_, ok := p.known[cmd]
-	return ok
-}
-
-// Analyze prompts for a PowerShell command, highlights it, and suggests likely user-input variables.
+// Analyze analyzes a PowerShell command, highlights it, and suggests likely user-input variables.
 func Analyze(command ...string) error {
 	if refreshCmdsFlag {
-		refreshPowerShellCommandChecker()
+		// refreshPowerShellCommandChecker() // No-op: command checker is not used
 	}
 	out := colorable.NewColorableStdout()
 	var cmdStr string
@@ -72,7 +51,10 @@ func Analyze(command ...string) error {
 		cmdStr = strings.Join(command, " ")
 	} else {
 		fmt.Fprintln(out)
-		fmt.Fprint(out, "Enter a PowerShell command to analyze: ")
+		fmt.Fprint(out, "Enter a PowerShell command to analyze (or use ")
+		colorText.Yellow("--command")
+		fmt.Fprintln(out, " for automation):")
+		colorText.Bold("> ")
 		reader := bufio.NewReader(os.Stdin)
 		c, _ := reader.ReadString('\n')
 		cmdStr = strings.TrimSpace(c)
@@ -85,11 +67,13 @@ func Analyze(command ...string) error {
 	lexer := lexers.Get("powershell")
 	if lexer == nil {
 		spinner.Stop()
+		colorText.Red("No syntax highlighter found for PowerShell. Aborting.")
 		return fmt.Errorf("no lexer for PowerShell")
 	}
 	iterator, err := lexer.Tokenise(nil, cmdStr)
 	if err != nil {
 		spinner.Stop()
+		colorText.Red("Failed to tokenize command: " + err.Error())
 		return err
 	}
 
@@ -110,28 +94,28 @@ func Analyze(command ...string) error {
 			if isLikelyPath(joined) {
 				varCounters["path"]++
 				varName := fmt.Sprintf("path%d", varCounters["path"])
-				suggestions = append(suggestions, struct{ VarName, Original string }{varName, joined})
+				suggestions = append(suggestions, struct{ VarName, Original string }{VarName: varName, Original: joined})
 			}
 			pathBuffer = nil
 		}
 	}
 	for i, token := range tokens {
-		if token.Type == chroma.String || token.Type == chroma.LiteralString {
+		if token.Type == chroma.String || token.Type == chroma.LiteralString || token.Type == chroma.LiteralStringDouble || token.Type == chroma.LiteralStringSingle {
 			varCounters["string"]++
 			varName := fmt.Sprintf("str%d", varCounters["string"])
-			suggestions = append(suggestions, struct{ VarName, Original string }{varName, token.Value})
+			suggestions = append(suggestions, struct{ VarName, Original string }{VarName: varName, Original: token.Value})
 			continue
 		}
 		if token.Type == chroma.LiteralNumber {
 			varCounters["number"]++
 			varName := fmt.Sprintf("num%d", varCounters["number"])
-			suggestions = append(suggestions, struct{ VarName, Original string }{varName, token.Value})
+			suggestions = append(suggestions, struct{ VarName, Original string }{VarName: varName, Original: token.Value})
 			continue
 		}
 		if token.Type == chroma.NameVariable {
 			varCounters["variable"]++
 			varName := fmt.Sprintf("var%d", varCounters["variable"])
-			suggestions = append(suggestions, struct{ VarName, Original string }{varName, token.Value})
+			suggestions = append(suggestions, struct{ VarName, Original string }{VarName: varName, Original: token.Value})
 			continue
 		}
 		if token.Type == chroma.LiteralString || token.Type == chroma.LiteralStringDouble || token.Type == chroma.LiteralStringSingle {
@@ -153,36 +137,39 @@ func Analyze(command ...string) error {
 	var suggestionReplacements []struct{ Original, Replacement string }
 	if len(suggestions) > 0 {
 		for _, s := range suggestions {
-			paramStr = strings.ReplaceAll(paramStr, s.Original, fmt.Sprintf("{{%s}}", s.VarName))
-			suggestionReplacements = append(suggestionReplacements, struct{ Original, Replacement string }{s.Original, fmt.Sprintf("{{%s}}", s.VarName)})
+			param := "{{" + s.VarName + "}}"
+			paramStr = strings.ReplaceAll(paramStr, s.Original, param)
+			suggestionReplacements = append(suggestionReplacements, struct{ Original, Replacement string }{Original: s.Original, Replacement: param})
 		}
 	}
 
-	fmt.Fprintf(out, "\x1b[1;32mOriginal command:\x1b[0m\n")
+	colorText.Green("\u2714 Analysis complete!")
+	fmt.Fprint(out, " ")
+	colorText.Bold("Original command:")
 	fmt.Fprintln(out, cmdStr)
 	if len(suggestionReplacements) > 0 {
 		fmt.Fprintln(out)
-		fmt.Fprintf(out, "\x1b[1;36mSuggested parameterization:\x1b[0m\n")
-		fmt.Fprintln(out, paramStr)
 	}
 	if len(suggestions) > 0 {
+		colorText.Cyan("Suggested parameterization:")
+		fmt.Fprintln(out, paramStr)
 		fmt.Fprintln(out)
-		fmt.Fprintf(out, "\x1b[1;33mSuggested variables:\x1b[0m\n")
+		colorText.Yellow("Variables detected:")
 		for _, s := range suggestions {
-			fmt.Fprintf(out, "  %s: %s\n", s.VarName, s.Original)
+			fmt.Fprint(out, "  ")
+			colorText.Magenta("%s", s.VarName)
+			fmt.Fprint(out, " (from ")
+			colorText.Cyan(s.Original)
+			fmt.Fprintln(out, ")")
 		}
 	} else {
-		fmt.Fprintln(out, "\x1b[33mNo variables suggested.\x1b[0m")
+		colorText.Yellow("No variables or parameters detected. This command is ready to use as-is!")
 	}
 
-	reader := bufio.NewReader(os.Stdin)
-	fmt.Fprint(out, "\nWould you like to save this parameterization as a gadget? Y/N: ")
-	resp, _ := reader.ReadString('\n')
-	resp = strings.TrimSpace(strings.ToLower(resp))
-	if resp == "y" || resp == "yes" {
-		// TODO: Call the add process (reuse NewAddCommand logic)
-		// Simulate: GoGoGadget add --command <paramStr>
-	}
+	fmt.Fprintln(out)
+	colorText.Cyan("To save this as a gadget, use:")
+	fmt.Fprint(out, "  ")
+	colorText.Bold("GoGoGadget add --command '<your command>' --scriptname <name> --desc <description>")
 	return nil
 }
 

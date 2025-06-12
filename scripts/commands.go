@@ -1,9 +1,7 @@
 package scripts
 
 import (
-	"bufio"
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/mattn/go-colorable"
@@ -15,76 +13,52 @@ func NewAddCommand() *cobra.Command {
 	var scriptName, command, desc string
 	cmd := &cobra.Command{
 		Use:   "add",
-		Short: "Add a new GoGoGadget gadget",
-		PreRun: func(cmd *cobra.Command, args []string) {
-			c, _ := cmd.Flags().GetString("command")
-			for _, v := range ExtractVariables(c) {
-				if cmd.Flags().Lookup(v) == nil {
-					cmd.Flags().String(v, "", fmt.Sprintf("Description for variable '%s'", v))
-				}
-			}
-		},
+		Short: "Add a new GoGoGadget gadget (all input must be provided via flags)",
+		Long:  `Add a new GoGoGadget gadget (user-defined command).\n\nAll required information must be provided using flags.\nExample:\n  GoGoGadget add --command "Get-ChildItem {{folder}}" --scriptname filecount --desc "Counts files" --folder "Folder to count"`,
 		Run: func(cmd *cobra.Command, args []string) {
 			store, err := NewGadgetStore()
 			if err != nil {
 				colorText.Red("\u274c Error loading gadgets: " + err.Error())
 				return
 			}
-			reader := bufio.NewReader(os.Stdin)
-			out := colorable.NewColorableStdout()
-			fmt.Fprintln(out)
-			colorText.Cyan("Add a new GoGoGadget gadget (user-defined command):")
-			fmt.Fprintln(out)
-
 			command, _ = cmd.Flags().GetString("command")
-			if command == "" {
-				fmt.Fprint(out, "\x1b[36m📝 Enter the PowerShell command this gadget will run (you can use \x1b[1;35m{{variable}}\x1b[0m\x1b[36m for variables you want to fill in each time): \x1b[0m")
-				c, _ := reader.ReadString('\n')
-				command = strings.TrimSpace(c)
-			}
-
 			scriptName, _ = cmd.Flags().GetString("scriptname")
-			for {
-				if scriptName == "" {
-					fmt.Fprint(out, "\x1b[36m🔖 Enter gadget name: \x1b[0m")
-					n, _ := reader.ReadString('\n')
-					scriptName = strings.TrimSpace(n)
-				}
-				if err := ValidateGadgetName(scriptName); err != nil {
-					colorText.Yellow("\u26a0\ufe0f  " + err.Error() + " Please enter a new name.")
-					scriptName = ""
-					continue
-				}
-				break
-			}
-
 			desc, _ = cmd.Flags().GetString("desc")
-			if desc == "" {
-				fmt.Fprint(out, "\x1b[36m💡 Enter gadget description: \x1b[0m")
-				d, _ := reader.ReadString('\n')
-				desc = strings.TrimSpace(d)
-			}
 
+			missing := []string{}
+			if command == "" {
+				missing = append(missing, "--command")
+			}
+			if scriptName == "" {
+				missing = append(missing, "--scriptname")
+			}
+			if desc == "" {
+				missing = append(missing, "--desc")
+			}
+			vars := ExtractVariables(command)
 			variables := map[string]string{}
-			for _, v := range ExtractVariables(command) {
+			for _, v := range vars {
 				val, _ := cmd.Flags().GetString(v)
 				if val == "" {
-					fmt.Fprintf(out, "\x1b[33m✏️  Describe variable '%s': \x1b[0m", v)
-					vd, _ := reader.ReadString('\n')
-					val = strings.TrimSpace(vd)
+					missing = append(missing, "--"+v)
+				} else {
+					variables[v] = val
 				}
-				variables[v] = val
 			}
-
+			if len(missing) > 0 {
+				colorText.Red("\u274c Missing required flags: " + strings.Join(missing, ", "))
+				fmt.Fprintln(colorable.NewColorableStdout(), "\nExample:")
+				fmt.Fprint(colorable.NewColorableStdout(), "  ")
+				colorText.Bold("GoGoGadget add --command \"Get-ChildItem {{folder}}\" --scriptname filecount --desc \"Counts files\" --folder \"Folder to count\"")
+				cmd.Help()
+				return
+			}
 			err = CreateGadget(store, scriptName, command, desc, variables)
 			if err != nil {
 				colorText.Red("\u274c " + err.Error())
 				return
 			}
-			fmt.Fprintln(out)
 			colorText.Green("\u2705 Gadget added!")
-			fmt.Fprintln(out)
-
 			gadget, _ := store.Get(scriptName)
 			printGadget(scriptName, gadget)
 		},
@@ -188,13 +162,15 @@ func NewListCommand() *cobra.Command {
 			}
 			gadgets := store.List()
 			if len(gadgets) == 0 {
-				fmt.Fprintln(colorable.NewColorableStdout(), "\x1b[36mNo gadgets found. Add one with 'GoGoGadget add'.\x1b[0m")
+				fmt.Fprintln(colorable.NewColorableStdout(), "No gadgets found. Add one with 'GoGoGadget add'.")
 				return
 			}
-			fmt.Fprintln(colorable.NewColorableStdout(), "\x1b[36mList of GoGoGadget gadgets (user-defined commands):\x1b[0m")
-			fmt.Fprintf(colorable.NewColorableStdout(), "\x1b[36m%-20s  %-40s  \x1b[0m\n", "Gadget Name", "Description")
+			out := colorable.NewColorableStdout()
+			fmt.Fprintln(out, "List of GoGoGadget gadgets (user-defined commands):")
+			fmt.Fprintf(out, "%-20s  %-40s\n", "Gadget Name", "Description")
 			for name, gadget := range gadgets {
-				fmt.Fprintf(colorable.NewColorableStdout(), "\x1b[1;35m%-20s\x1b[0m  %-40s\n", name, gadget.Description)
+				colorText.Magenta("%-20s", name)
+				fmt.Fprintf(out, "  %-40s\n", gadget.Description)
 			}
 		},
 	}
@@ -227,20 +203,21 @@ func NewPeekCommand() *cobra.Command {
 // printGadget pretty-prints all info about a gadget, with syntax highlighting for the command.
 func printGadget(name string, gadget Gadget) {
 	out := colorable.NewColorableStdout()
-	fmt.Fprintln(out, "\n\x1b[1;36mGadget Name:\x1b[0m      \x1b[1;35m"+name+"\x1b[0m")
-	fmt.Fprintln(out, "\x1b[1;36mDescription:\x1b[0m      "+gadget.Description)
-	fmt.Fprintln(out, "\x1b[1;36mCommand:\x1b[0m")
+	fmt.Fprintln(out, "\nGadget Name:      "+name)
+	fmt.Fprintln(out, "Description:      "+gadget.Description)
+	fmt.Fprintln(out, "Command:")
 	fmt.Fprintln(out, "  "+highlightPowerShell(gadget.Command))
 	if len(gadget.Variables) > 0 {
-		fmt.Fprintln(out, "\x1b[1;36mVariables:\x1b[0m")
+		fmt.Fprintln(out, "Variables:")
 		for v, desc := range gadget.Variables {
 			if desc == "" {
 				desc = fmt.Sprintf("Value for %s", v)
 			}
-			fmt.Fprintf(out, "  \x1b[1;35m%-15s\x1b[0m %s\n", v, desc)
+			colorText.Magenta("  %-15s", v)
+			fmt.Fprintf(out, " %s\n", desc)
 		}
 	} else {
-		fmt.Fprintln(out, "\x1b[1;36mVariables:\x1b[0m  (none)")
+		fmt.Fprintln(out, "Variables:  (none)")
 	}
 	fmt.Fprintln(out)
 }

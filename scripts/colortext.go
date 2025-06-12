@@ -25,3 +25,11 @@ func (ColorText) Yellow(msg string) {
 func (ColorText) Cyan(msg string) {
 	fmt.Fprintln(colorable.NewColorableStdout(), "\x1b[36m"+msg+"\x1b[0m")
 }
+
+func (ColorText) Bold(msg string, a ...interface{}) {
+	fmt.Fprintf(colorable.NewColorableStdout(), "\x1b[1m"+msg+"\x1b[0m\n", a...)
+}
+
+func (ColorText) Magenta(msg string, a ...interface{}) {
+	fmt.Fprintf(colorable.NewColorableStdout(), "\x1b[35m"+msg+"\x1b[0m\n", a...)
+}

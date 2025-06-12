@@ -58,10 +58,10 @@ Use 'GoGoGadget add' to create a new shortcut, 'GoGoGadget list' to see all, or 
 		Run: func(cmd *cobra.Command, args []string) {
 			out := colorable.NewColorableStdout()
 			fmt.Fprintln(out)
-			fmt.Fprintln(out, "\x1b[1;36mGoGoGadget\x1b[0m: \x1b[1;37mRun your \x1b[1;35mgadgets\x1b[0m\x1b[1;37m (user-defined commands) easily!\x1b[0m")
+			fmt.Fprintln(out, "GoGoGadget: Run your gadgets (user-defined commands) easily!")
 			fmt.Fprintln(out)
-			fmt.Fprintln(out, "\x1b[1;32m•\x1b[0m Use '\x1b[1;33mGoGoGadget add\x1b[0m' to create a new gadget, '\x1b[1;33mGoGoGadget list\x1b[0m' to see all gadgets, '\x1b[1;33mGoGoGadget edit\x1b[0m' to modify a gadget, and '\x1b[1;33mGoGoGadget delete\x1b[0m' to remove a gadget.")
-			fmt.Fprintln(out, "\x1b[1;32m•\x1b[0m Each gadget runs a \x1b[1;36mPowerShell\x1b[0m command and can use variables (e.g., \x1b[1;35m{{variable}}\x1b[0m) for customization.")
+			fmt.Fprintln(out, "• Use 'GoGoGadget add' to create a new gadget, 'GoGoGadget list' to see all gadgets, 'GoGoGadget edit' to modify a gadget, and 'GoGoGadget delete' to remove a gadget.")
+			fmt.Fprintln(out, "• Each gadget runs a PowerShell command and can use variables (e.g., {{variable}}) for customization.")
 			fmt.Fprintln(out)
 		},
 	}
