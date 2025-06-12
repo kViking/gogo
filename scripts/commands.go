@@ -103,6 +103,10 @@ func NewEditCommand() *cobra.Command {
 		Short: "Edit an existing gadget",
 		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
+			if len(args) == 0 {
+				cmd.Help()
+				return
+			}
 			store, err := NewGadgetStore()
 			if err != nil {
 				colorText.Red("\u274c Could not load gadgets.")
@@ -125,8 +129,6 @@ func NewEditCommand() *cobra.Command {
 				return
 			}
 			colorText.Green("\u2705 Gadget updated!")
-
-			// Show the updated gadget (use newNameFlag if set, else original name)
 			finalName := name
 			if cmd.Flags().Changed("name") && newNameFlag != "" {
 				finalName = newNameFlag
