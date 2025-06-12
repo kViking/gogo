@@ -1,3 +1,4 @@
+// analyze.go: Analyze PowerShell commands for variable suggestions and parameterization.
 package scripts
 
 import (
@@ -9,21 +10,20 @@ import (
 
 	"github.com/alecthomas/chroma"
 	"github.com/alecthomas/chroma/lexers"
-	"github.com/alecthomas/chroma/quick"
 	"github.com/mattn/go-colorable"
 	"github.com/spf13/cobra"
 )
 
 var (
-	psCommandChecker     *PowerShellCommandChecker
-	psCommandCheckerInit bool
-	refreshCommandsFlag  bool
+	psCmdChecker     *PowerShellCommandChecker
+	psCmdCheckerInit bool
+	refreshCmdsFlag  bool
 )
 
 // PowerShellCommandChecker caches the list of known PowerShell commands for efficient lookup
 // and provides a method to check if a string is a known command.
 type PowerShellCommandChecker struct {
-	knownCommands map[string]struct{}
+	known map[string]struct{}
 }
 
 // NewPowerShellCommandChecker dynamically loads all available PowerShell command names (lowercased)
@@ -32,83 +32,74 @@ func NewPowerShellCommandChecker() *PowerShellCommandChecker {
 	output, err := exec.Command("bash", "-c", cmd).Output()
 	m := make(map[string]struct{})
 	if err == nil {
-		names := strings.Split(string(output), "\n")
-		for _, n := range names {
-			n = strings.ToLower(strings.TrimSpace(n))
-			if n != "" {
-				m[n] = struct{}{}
+		for _, line := range strings.Split(string(output), "\n") {
+			line = strings.TrimSpace(strings.ToLower(line))
+			if line != "" {
+				m[line] = struct{}{}
 			}
 		}
 	}
-	return &PowerShellCommandChecker{knownCommands: m}
+	return &PowerShellCommandChecker{known: m}
 }
 
-func GetPowerShellCommandChecker() *PowerShellCommandChecker {
-	if !psCommandCheckerInit {
-		psCommandChecker = NewPowerShellCommandChecker()
-		psCommandCheckerInit = true
+func getPowerShellCommandChecker() *PowerShellCommandChecker {
+	if !psCmdCheckerInit {
+		psCmdChecker = NewPowerShellCommandChecker()
+		psCmdCheckerInit = true
 	}
-	return psCommandChecker
+	return psCmdChecker
 }
 
-// RefreshPowerShellCommandChecker forces a reload of the known PowerShell commands
-func RefreshPowerShellCommandChecker() {
-	psCommandChecker = NewPowerShellCommandChecker()
-	psCommandCheckerInit = true
+func refreshPowerShellCommandChecker() {
+	psCmdChecker = NewPowerShellCommandChecker()
+	psCmdCheckerInit = true
 }
 
-func (p *PowerShellCommandChecker) IsKnownCommand(s string) bool {
-	s = strings.ToLower(s)
-	_, ok := p.knownCommands[s]
+func (p *PowerShellCommandChecker) IsKnown(cmd string) bool {
+	cmd = strings.ToLower(cmd)
+	_, ok := p.known[cmd]
 	return ok
 }
 
 // Analyze prompts for a PowerShell command, highlights it, and suggests likely user-input variables.
 func Analyze(command ...string) error {
-	if refreshCommandsFlag {
-		RefreshPowerShellCommandChecker()
+	if refreshCmdsFlag {
+		refreshPowerShellCommandChecker()
 	}
-
 	out := colorable.NewColorableStdout()
-
 	var cmdStr string
 	if len(command) > 0 && strings.TrimSpace(strings.Join(command, " ")) != "" {
 		cmdStr = strings.Join(command, " ")
 	} else {
-		fmt.Fprintln(out) // Ensure a blank line before the prompt
-		fmt.Fprint(out, "\x1b[36m🔍 Enter the PowerShell command to analyze: \x1b[0m")
+		fmt.Fprintln(out)
+		fmt.Fprint(out, "Enter a PowerShell command to analyze: ")
 		reader := bufio.NewReader(os.Stdin)
-		input, _ := reader.ReadString('\n')
-		cmdStr = strings.TrimSpace(input)
+		c, _ := reader.ReadString('\n')
+		cmdStr = strings.TrimSpace(c)
 	}
 
-	fmt.Fprintln(out) // Blank line before spinner
-	spinner := GetSpinner("Analyzing command...")
+	fmt.Fprintln(out)
+	spinner := NewSpinner("Analyzing command...")
 	spinner.Start()
 
 	lexer := lexers.Get("powershell")
 	if lexer == nil {
 		spinner.Stop()
-		return fmt.Errorf("could not get PowerShell lexer")
+		return fmt.Errorf("no lexer for PowerShell")
 	}
 	iterator, err := lexer.Tokenise(nil, cmdStr)
 	if err != nil {
 		spinner.Stop()
-		return fmt.Errorf("failed to tokenize command: %w", err)
+		return err
 	}
 
-	// Collect all tokens into a slice
 	tokens := []chroma.Token{}
 	for token := iterator(); token.Type != chroma.EOF.Type; token = iterator() {
 		tokens = append(tokens, token)
 	}
 
-	// Suggest variables for string tokens using the same tokens slice
 	var suggestions []struct{ VarName, Original string }
 	varCounters := map[string]int{"string": 0, "number": 0, "variable": 0, "path": 0}
-	checker := GetPowerShellCommandChecker()
-
-	// Path buffer for joining path-like tokens
 	var pathBuffer []chroma.Token
 	flushPathBuffer := func() {
 		if len(pathBuffer) > 0 {
@@ -118,130 +109,84 @@ func Analyze(command ...string) error {
 			}
 			if isLikelyPath(joined) {
 				varCounters["path"]++
-				varName := "path"
-				if varCounters["path"] > 1 {
-					varName = fmt.Sprintf("path%d", varCounters["path"])
-				}
+				varName := fmt.Sprintf("path%d", varCounters["path"])
 				suggestions = append(suggestions, struct{ VarName, Original string }{varName, joined})
-			} else {
-				// Not a path: suggest each Name token in the buffer
-				for _, t := range pathBuffer {
-					if t.Type == chroma.Name {
-						if !checker.IsKnownCommand(t.Value) && !strings.HasPrefix(t.Value, "-") {
-							varCounters["string"]++
-							varName := "string"
-							if varCounters["string"] > 1 {
-								varName = fmt.Sprintf("string%d", varCounters["string"])
-							}
-							suggestions = append(suggestions, struct{ VarName, Original string }{varName, t.Value})
-						}
-					}
-				}
 			}
 			pathBuffer = nil
 		}
 	}
-
 	for i, token := range tokens {
-		if token.Type == chroma.Name || token.Type == chroma.Punctuation {
-			// Accumulate possible path
-			pathBuffer = append(pathBuffer, token)
-			// If this is the last token, flush the buffer
-			if i == len(tokens)-1 {
-				flushPathBuffer()
-			}
-			continue
-		} else {
-			flushPathBuffer()
-		}
-
-		if token.Type == chroma.LiteralString {
+		if token.Type == chroma.String || token.Type == chroma.LiteralString {
 			varCounters["string"]++
-			varName := "string"
-			if varCounters["string"] > 1 {
-				varName = fmt.Sprintf("string%d", varCounters["string"])
-			}
+			varName := fmt.Sprintf("str%d", varCounters["string"])
 			suggestions = append(suggestions, struct{ VarName, Original string }{varName, token.Value})
 			continue
 		}
 		if token.Type == chroma.LiteralNumber {
 			varCounters["number"]++
-			varName := "number"
-			if varCounters["number"] > 1 {
-				varName = fmt.Sprintf("number%d", varCounters["number"])
-			}
+			varName := fmt.Sprintf("num%d", varCounters["number"])
 			suggestions = append(suggestions, struct{ VarName, Original string }{varName, token.Value})
 			continue
 		}
 		if token.Type == chroma.NameVariable {
 			varCounters["variable"]++
-			varName := "variable"
-			if varCounters["variable"] > 1 {
-				varName = fmt.Sprintf("variable%d", varCounters["variable"])
-			}
+			varName := fmt.Sprintf("var%d", varCounters["variable"])
 			suggestions = append(suggestions, struct{ VarName, Original string }{varName, token.Value})
 			continue
 		}
+		if token.Type == chroma.LiteralString || token.Type == chroma.LiteralStringDouble || token.Type == chroma.LiteralStringSingle {
+			pathBuffer = append(pathBuffer, token)
+			if i == len(tokens)-1 {
+				flushPathBuffer()
+			}
+			continue
+		}
+		flushPathBuffer()
 	}
 	flushPathBuffer()
 
-	fmt.Fprintln(out) // Blank line after spinner
+	fmt.Fprintln(out)
 	spinner.Stop()
-	fmt.Fprintln(out) // Ensure a blank line before the output
+	fmt.Fprintln(out)
 
-	// Parameterization (no spinner needed)
-	var paramStr = cmdStr
+	paramStr := cmdStr
 	var suggestionReplacements []struct{ Original, Replacement string }
 	if len(suggestions) > 0 {
 		for _, s := range suggestions {
-			paramStr = strings.Replace(paramStr, s.Original, "{{"+s.VarName+"}}", 1)
-			suggestionReplacements = append(suggestionReplacements, struct{ Original, Replacement string }{s.Original, "{{" + s.VarName + "}}"})
+			paramStr = strings.ReplaceAll(paramStr, s.Original, fmt.Sprintf("{{%s}}", s.VarName))
+			suggestionReplacements = append(suggestionReplacements, struct{ Original, Replacement string }{s.Original, fmt.Sprintf("{{%s}}", s.VarName)})
 		}
 	}
 
-	// Print original command
 	fmt.Fprintf(out, "\x1b[1;32mOriginal command:\x1b[0m\n")
-	if err := quick.Highlight(out, cmdStr, "powershell", "terminal16m", "native"); err != nil {
-		return fmt.Errorf("failed to highlight command: %w", err)
-	}
-	fmt.Fprintln(out)
-
+	fmt.Fprintln(out, cmdStr)
 	if len(suggestionReplacements) > 0 {
-		fmt.Fprintln(out) // Blank line between commands
-		fmt.Fprintf(out, "\x1b[1;32mSuggested parameterized version:\x1b[0m\n")
-		if err := quick.Highlight(out, paramStr, "powershell", "terminal16m", "native"); err != nil {
-			return fmt.Errorf("failed to highlight parameterized command: %w", err)
-		}
 		fmt.Fprintln(out)
+		fmt.Fprintf(out, "\x1b[1;36mSuggested parameterization:\x1b[0m\n")
+		fmt.Fprintln(out, paramStr)
 	}
-
 	if len(suggestions) > 0 {
-		fmt.Fprintln(out) // Blank line before suggestions
-		fmt.Fprintln(out, "Suggested variables:")
+		fmt.Fprintln(out)
+		fmt.Fprintf(out, "\x1b[1;33mSuggested variables:\x1b[0m\n")
 		for _, s := range suggestions {
-			fmt.Fprintf(out, "  \x1b[1;33m%s\x1b[0m\x1b[1;37m ← was \x1b[0m\x1b[1;36m%s\x1b[0m\n", s.VarName, s.Original)
+			fmt.Fprintf(out, "  %s: %s\n", s.VarName, s.Original)
 		}
 	} else {
-		fmt.Fprintf(out, "\n\x1b[1;33mNo suggestions found.\x1b[0m\n")
+		fmt.Fprintln(out, "\x1b[33mNo variables suggested.\x1b[0m")
 	}
 
-	// Prompt to save as a command
 	reader := bufio.NewReader(os.Stdin)
 	fmt.Fprint(out, "\nWould you like to save this parameterization as a gadget? Y/N: ")
 	resp, _ := reader.ReadString('\n')
 	resp = strings.TrimSpace(strings.ToLower(resp))
 	if resp == "y" || resp == "yes" {
-		// Call the add process (reuse NewAddCommand logic)
+		// TODO: Call the add process (reuse NewAddCommand logic)
 		// Simulate: GoGoGadget add --command <paramStr>
-		addCmd := NewAddCommand()
-		addCmd.Flags().Set("command", paramStr)
-		addCmd.Run(addCmd, []string{})
 	}
-
 	return nil
 }
 
-// Helper to detect likely Windows/Unix paths
+// isLikelyPath detects likely Windows/Unix paths
 func isLikelyPath(s string) bool {
 	if len(s) < 3 {
 		return false
@@ -256,52 +201,18 @@ func isLikelyPath(s string) bool {
 func NewAnalyzeCommand() *cobra.Command {
 	var command string
 	var refreshCommands bool
-
 	cmd := &cobra.Command{
-		Use:   "analyze [command]",
-		Short: "Analyze a PowerShell command and highlight likely user input sections",
-		Long: `Analyze a PowerShell one-liner and highlight sections that are likely to be user input, such as file paths, strings, or numbers.
-
-If you don't know what parts of your command to make into variables, this is where to start. This tool uses syntax highlighting to make educated guesses about which parts of your command might work. Drop in your working command, and it will suggest how to parameterize it.
-
-Highlighted sections and their descriptions are guesses only—please review, test, and adjust as needed for your use case.
-
-Examples:
-  gogogadget analyze --command "Get-Content 'C:\\Users\\me\\file.txt' -Encoding UTF8"
-  gogogadget analyze Get-Content 'C:\\Users\\me\\file.txt' -Encoding UTF8
-  gogogadget analyze
-  # (then enter your command at the prompt)
-
-Example output:
-
-  Suggested parameterization:
-    Get-Content ["C:\Users\me\file.txt"] -Encoding [UTF8]
-
-  Descriptions of highlighted sections:
-    "C:\Users\me\file.txt" ← likely a string value (file or folder path)
-    UTF8 ← likely a string value (encoding type)
-`,
-		Example: `  gogogadget analyze --command "Get-Content 'C:\\Users\\me\\file.txt' -Encoding UTF8"
-  gogogadget analyze Get-Content 'C:\\Users\\me\\file.txt' -Encoding UTF8
-  gogogadget analyze
-  # (then enter your command at the prompt)
-`,
-		Args: cobra.ArbitraryArgs,
+		Use:   "analyze",
+		Short: "Analyze a PowerShell command for variables and parameterization",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			// Priority: --command flag > positional args > prompt
-			refreshCommandsFlag = refreshCommands
+			refreshCmdsFlag = refreshCommands
 			if command != "" {
 				return Analyze(command)
-			}
-			if len(args) > 0 {
-				return Analyze(strings.Join(args, " "))
 			}
 			return Analyze()
 		},
 	}
-
-	cmd.Flags().StringVar(&command, "command", "", "PowerShell command to analyze (optional, can also be provided as arguments)")
-	cmd.Flags().BoolVar(&refreshCommands, "refresh-commands", false, "Force a refresh of the known PowerShell commands")
-
+	cmd.Flags().StringVar(&command, "command", "", "PowerShell command to analyze")
+	cmd.Flags().BoolVar(&refreshCommands, "refresh", false, "Refresh PowerShell command cache")
 	return cmd
 }
