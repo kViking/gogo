@@ -14,11 +14,16 @@ func NewAddCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "add",
 		Short: "Add a new GoGoGadget gadget (all input must be provided via flags)",
-		Long:  `Add a new GoGoGadget gadget (user-defined command).\n\nAll required information must be provided using flags.\nExample:\n  GoGoGadget add --command "Get-ChildItem {{folder}}" --scriptname filecount --desc "Counts files" --folder "Folder to count"`,
+		Long: `Add a new GoGoGadget gadget (user-defined command).
+
+All required information must be provided using flags.
+
+Example:
+  GoGoGadget add --command "Get-ChildItem {{folder}}" --scriptname filecount --desc "Counts files" --folder "Folder to count"`,
 		Run: func(cmd *cobra.Command, args []string) {
 			store, err := NewGadgetStore()
 			if err != nil {
-				colorText.Red("\u274c Error loading gadgets: " + err.Error())
+				colorText.Style("error", "\u274c Error loading gadgets: %s", err.Error())
 				return
 			}
 			command, _ = cmd.Flags().GetString("command")
@@ -46,19 +51,22 @@ func NewAddCommand() *cobra.Command {
 				}
 			}
 			if len(missing) > 0 {
-				colorText.Red("\u274c Missing required flags: " + strings.Join(missing, ", "))
-				fmt.Fprintln(colorable.NewColorableStdout(), "\nExample:")
-				fmt.Fprint(colorable.NewColorableStdout(), "  ")
-				colorText.Bold("GoGoGadget add --command \"Get-ChildItem {{folder}}\" --scriptname filecount --desc \"Counts files\" --folder \"Folder to count\"")
+				colorText.Style("error", "\u274c Missing required flags: %s", strings.Join(missing, ", "))
+				colorText.PrintStyledLine(
+					StyledChunk{"\nExample:", "info"},
+				)
+				colorText.PrintStyledLine(
+					StyledChunk{"  GoGoGadget add --command \"Get-ChildItem {{folder}}\" --scriptname filecount --desc \"Counts files\" --folder \"Folder to count\"", "title"},
+				)
 				cmd.Help()
 				return
 			}
 			err = CreateGadget(store, scriptName, command, desc, variables)
 			if err != nil {
-				colorText.Red("\u274c " + err.Error())
+				colorText.Style("error", "\u274c %s", err.Error())
 				return
 			}
-			colorText.Green("\u2705 Gadget added!")
+			colorText.Style("success", "\u2705 Gadget added!")
 			gadget, _ := store.Get(scriptName)
 			printGadget(scriptName, gadget)
 		},
@@ -74,12 +82,19 @@ func NewEditCommand() *cobra.Command {
 	var newNameFlag, newDescFlag, newCmdFlag string
 	cmd := &cobra.Command{
 		Use:   "edit [gadget name]",
-		Short: "Edit an existing gadget",
-		Args:  cobra.ExactArgs(1),
+		Short: "Edit an existing gadget. To rename a gadget, use --name. To rename a variable, use --<var> --name <newname>. To change a variable's description, use --<var> --description <desc>.",
+		Long: `Edit an existing gadget and its variables.
+
+To rename a gadget, use --name.
+To rename a variable, use --<var> --name <newname>.
+To change a variable's description, use --<var> --description <desc>.
+
+Tip: Use 'GoGoGadget peek [gadget name]' to see the current variables and descriptions before editing.`,
+		Args: cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			store, err := NewGadgetStore()
 			if err != nil {
-				colorText.Red("\u274c Could not load gadgets.")
+				colorText.Style("error", "\u274c Could not load gadgets.")
 				return
 			}
 			name := args[0]
@@ -93,16 +108,48 @@ func NewEditCommand() *cobra.Command {
 			if cmd.Flags().Changed("command") {
 				updates["command"] = newCmdFlag
 			}
+
+			// Allow editing variable names and descriptions:
+			if store != nil {
+				gadget, ok := store.Get(name)
+				if ok {
+					for oldVar := range gadget.Variables {
+						if cmd.Flags().Changed(oldVar) {
+							// Rename variable: --oldVar --name newName
+							if cmd.Flags().Changed("name") {
+								newVar, _ := cmd.Flags().GetString("name")
+								if newVar != "" && newVar != oldVar {
+									if updates["rename_vars"] == nil {
+										updates["rename_vars"] = map[string]string{}
+									}
+									updates["rename_vars"].(map[string]string)[oldVar] = newVar
+								}
+							}
+							// Change variable description: --oldVar --description newDesc
+							if cmd.Flags().Changed("description") {
+								desc, _ := cmd.Flags().GetString("description")
+								if desc != "" {
+									if updates["var_descs"] == nil {
+										updates["var_descs"] = map[string]string{}
+									}
+									updates["var_descs"].(map[string]string)[oldVar] = desc
+								}
+							}
+						}
+					}
+				}
+			}
+
 			if len(updates) == 0 {
 				cmd.Help()
 				return
 			}
 			err = EditGadget(store, name, updates)
 			if err != nil {
-				colorText.Red("\u274c " + err.Error())
+				colorText.Style("error", "\u274c %s", err.Error())
 				return
 			}
-			colorText.Green("\u2705 Gadget updated!")
+			colorText.Style("success", "\u2705 Gadget updated!")
 			finalName := name
 			if cmd.Flags().Changed("name") && newNameFlag != "" {
 				finalName = newNameFlag
@@ -111,6 +158,22 @@ func NewEditCommand() *cobra.Command {
 			printGadget(finalName, gadget)
 		},
 	}
+
+	// Add flags for variable renaming and description (dynamic, after command is loaded)
+	cmd.PreRun = func(cmd *cobra.Command, args []string) {
+		if len(args) > 0 {
+			store, err := NewGadgetStore()
+			if err == nil {
+				gadget, ok := store.Get(args[0])
+				if ok {
+					for v := range gadget.Variables {
+						cmd.Flags().Bool(v, false, "Target variable '"+v+"' for renaming or description change")
+					}
+				}
+			}
+		}
+	}
+
 	cmd.Flags().StringVar(&newNameFlag, "name", "", "New gadget name")
 	cmd.Flags().StringVar(&newDescFlag, "description", "", "New gadget description")
 	cmd.Flags().StringVar(&newCmdFlag, "command", "", "New PowerShell command")
@@ -126,24 +189,24 @@ func NewDeleteCommand() *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			store, err := NewGadgetStore()
 			if err != nil {
-				colorText.Red("\u274c Error loading gadgets: " + err.Error())
+				colorText.Style("error", "\u274c Error loading gadgets: %s", err.Error())
 				return
 			}
 			name := args[0]
 			if name == "" {
-				fmt.Fprintln(colorable.NewColorableStdout(), "\x1b[31m\u274c Gadget name is required.\x1b[0m")
+				colorText.Style("error", "\u274c Gadget name is required.")
 				return
 			}
 			err = store.Delete(name)
 			if err != nil {
-				colorText.Red(fmt.Sprintf("\u274c Gadget '%s' not found or could not be deleted.\n", name))
+				colorText.Style("error", "\u274c Gadget '%s' not found or could not be deleted.", name)
 				return
 			}
 			if err := store.Save(); err != nil {
-				colorText.Red(fmt.Sprintf("\u274c Error deleting gadget: %v", err))
+				colorText.Style("error", "\u274c Error deleting gadget: %v", err)
 				return
 			}
-			colorText.Green("\u2705 Gadget deleted!")
+			colorText.Style("success", "\u2705 Gadget deleted!")
 		},
 	}
 	return cmd
@@ -165,12 +228,20 @@ func NewListCommand() *cobra.Command {
 				fmt.Fprintln(colorable.NewColorableStdout(), "No gadgets found. Add one with 'GoGoGadget add'.")
 				return
 			}
-			out := colorable.NewColorableStdout()
-			fmt.Fprintln(out, "List of GoGoGadget gadgets (user-defined commands):")
-			fmt.Fprintf(out, "%-20s  %-40s\n", "Gadget Name", "Description")
+			colorText.PrintStyledLine(
+				StyledChunk{"List of GoGoGadget gadgets (user-defined commands):", "info"},
+			)
+			colorText.PrintStyledLine(
+				StyledChunk{"Gadget Name", "title"},
+				StyledChunk{"  ", ""},
+				StyledChunk{"Description", "title"},
+			)
 			for name, gadget := range gadgets {
-				colorText.Magenta("%-20s", name)
-				fmt.Fprintf(out, "  %-40s\n", gadget.Description)
+				colorText.PrintStyledLine(
+					StyledChunk{name, "variable"},
+					StyledChunk{"  ", ""},
+					StyledChunk{gadget.Description, ""},
+				)
 			}
 		},
 	}
@@ -186,12 +257,12 @@ func NewPeekCommand() *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			store, err := NewGadgetStore()
 			if err != nil {
-				colorText.Red("\u274c Error loading user_scripts.json: " + err.Error())
+				colorText.Style("error", "\u274c Error loading user_scripts.json: %s", err.Error())
 				return
 			}
 			gadget, ok := store.Get(args[0])
 			if !ok {
-				colorText.Red(fmt.Sprintf("\u274c Gadget '%s' not found.", args[0]))
+				colorText.Style("error", "\u274c Gadget '%s' not found.", args[0])
 				return
 			}
 			printGadget(args[0], gadget)
@@ -203,21 +274,30 @@ func NewPeekCommand() *cobra.Command {
 // printGadget pretty-prints all info about a gadget, with syntax highlighting for the command.
 func printGadget(name string, gadget Gadget) {
 	out := colorable.NewColorableStdout()
-	fmt.Fprintln(out, "\nGadget Name:      "+name)
-	fmt.Fprintln(out, "Description:      "+gadget.Description)
-	fmt.Fprintln(out, "Command:")
+	colorText.PrintStyledLine(
+		StyledChunk{"\nGadget Name:      ", "title"},
+		StyledChunk{name, "variable"},
+	)
+	colorText.PrintStyledLine(StyledChunk{"Description:", "title"})
+	fmt.Fprintln(out, "  ", gadget.Description)
+	colorText.PrintStyledLine(StyledChunk{"Command:", "title"})
 	fmt.Fprintln(out, "  "+highlightPowerShell(gadget.Command))
 	if len(gadget.Variables) > 0 {
-		fmt.Fprintln(out, "Variables:")
+		colorText.PrintStyledLine(StyledChunk{"Variables:", "title"})
 		for v, desc := range gadget.Variables {
 			if desc == "" {
 				desc = fmt.Sprintf("Value for %s", v)
 			}
-			colorText.Magenta("  %-15s", v)
-			fmt.Fprintf(out, " %s\n", desc)
+			colorText.PrintStyledLine(
+				StyledChunk{"  ", ""},
+				StyledChunk{v, "variable"},
+				StyledChunk{" ", ""},
+				StyledChunk{desc, ""},
+			)
 		}
 	} else {
-		fmt.Fprintln(out, "Variables:  (none)")
+		colorText.PrintStyledLine(StyledChunk{"Variables:", "title"})
+		fmt.Fprintln(out, "  (none)")
 	}
 	fmt.Fprintln(out)
 }

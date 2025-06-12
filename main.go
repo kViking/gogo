@@ -56,13 +56,31 @@ GoGoGadget is a CLI tool for creating, managing, and running PowerShell script s
 
 Use 'GoGoGadget add' to create a new shortcut, 'GoGoGadget list' to see all, or run your scripts directly as subcommands!`,
 		Run: func(cmd *cobra.Command, args []string) {
-			out := colorable.NewColorableStdout()
-			fmt.Fprintln(out)
-			fmt.Fprintln(out, "GoGoGadget: Run your gadgets (user-defined commands) easily!")
-			fmt.Fprintln(out)
-			fmt.Fprintln(out, "• Use 'GoGoGadget add' to create a new gadget, 'GoGoGadget list' to see all gadgets, 'GoGoGadget edit' to modify a gadget, and 'GoGoGadget delete' to remove a gadget.")
-			fmt.Fprintln(out, "• Each gadget runs a PowerShell command and can use variables (e.g., {{variable}}) for customization.")
-			fmt.Fprintln(out)
+			// Print a styled GoGoGadget intro: only the word GoGoGadget uses 'gogogadget', the rest uses 'title'
+			scripts.ColorText{}.PrintStyledLine(
+				scripts.StyledChunk{Text: "GoGoGadget", Style: "gogogadget"},
+				scripts.StyledChunk{Text: ": Run your gadgets (user-defined commands) easily!", Style: "title"},
+			)
+			scripts.ColorText{}.PrintStyledLine(
+				scripts.StyledChunk{Text: "• Use '", Style: ""},
+				scripts.StyledChunk{Text: "GoGoGadget", Style: "gogogadget"},
+				scripts.StyledChunk{Text: " add", Style: "highlight"},
+				scripts.StyledChunk{Text: "' to create a new gadget, '", Style: ""},
+				scripts.StyledChunk{Text: "GoGoGadget", Style: "gogogadget"},
+				scripts.StyledChunk{Text: " list", Style: "highlight"},
+				scripts.StyledChunk{Text: "' to see all gadgets, '", Style: ""},
+				scripts.StyledChunk{Text: "GoGoGadget", Style: "gogogadget"},
+				scripts.StyledChunk{Text: " edit", Style: "highlight"},
+				scripts.StyledChunk{Text: "' to modify a gadget, and '", Style: ""},
+				scripts.StyledChunk{Text: "GoGoGadget", Style: "gogogadget"},
+				scripts.StyledChunk{Text: " delete", Style: "highlight"},
+				scripts.StyledChunk{Text: "' to remove a gadget.", Style: ""},
+			)
+			scripts.ColorText{}.PrintStyledLine(
+				scripts.StyledChunk{Text: "• Each gadget runs a PowerShell command and can use variables (e.g., ", Style: ""},
+				scripts.StyledChunk{Text: "{{variable}}", Style: "highlight"},
+				scripts.StyledChunk{Text: ") for customization.", Style: ""},
+			)
 		},
 	}
 

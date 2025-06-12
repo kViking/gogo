@@ -72,34 +72,53 @@ func getUserConfirmation() {
 	os.Exit(1)
 }
 
-// ShowFirstRunMessage displays the first-run warning message with the critical part in red
-// and asks for user confirmation before proceeding
-func ShowFirstRunMessage() {
-	// Define the warning message as a string literal
+// PrintFirstRunWarning displays the first-run warning message with semantic styling.
+// If confirm is true, prompts for confirmation and exits; otherwise, just prints the message.
+func PrintFirstRunWarning(confirm bool) {
 	warningMsg := `*** ------------------------------- ***
 You are running GoGoGadget for the first time! This is exciting! You need to know a couple of things:
 
 `
-
-	// Print the first part of the message
-	fmt.Print(warningMsg)
-
-	// Show the first sentence of point 1 in bright red
-	fmt.Print("1. ")
-	fmt.Print("\x1b[1;91mGoGoGadget does NOT have any checks for your PowerShell commands.\x1b[0m")
-
-	// Define the rest of the message as a string literal
+	colorText.PrintStyledLine(
+		StyledChunk{warningMsg, "info"},
+	)
+	colorText.PrintStyledLine(
+		StyledChunk{"1. ", "title"},
+		StyledChunk{"GoGoGadget does NOT have any checks for your PowerShell commands.", "error"},
+	)
 	restOfMsg := ` It will run them as-is, with variables replaced exactly as you specify. Make sure you test your commands before saving them with GoGoGadget!
-2. Your gadgets are stored in a json file in your $LOCALAPPDATA directory (check yours with \x1b[1;100m\x1b[97m$env:LOCALAPPDATA\x1b[0m). You can edit this file directly if you want without fear of breaking anything, but there are robust built in tools to edit the shortcuts as well. GUI is planned for a future release.
+2. Your gadgets are stored in a json file in your $LOCALAPPDATA directory (check yours with $env:LOCALAPPDATA). You can edit this file directly if you want without fear of breaking anything, but there are robust built in tools to edit the shortcuts as well. GUI is planned for a future release.
 
 Print this message again with 'GoGoGadget first-run' if you need to see it again.
 You can always run 'GoGoGadget help' for instructions on how to use the tool.
 *** ------------------------------- ***
 `
-	fmt.Print(restOfMsg)
+	colorText.PrintStyledLine(
+		StyledChunk{restOfMsg, ""},
+	)
 
-	// Get user confirmation, will exit if not confirmed
-	getUserConfirmation()
+	if confirm {
+		getUserConfirmation()
+	} else {
+		// For the command, just print a styled prompt for review
+		colorText.PrintStyledLine(
+			StyledChunk{"(Press y/yes to continue, anything else to review the information above)", "info"},
+		)
+		reader := bufio.NewReader(os.Stdin)
+		fmt.Print("Do you understand? (y/yes): ")
+		response, _ := reader.ReadString('\n')
+		response = strings.TrimSpace(strings.ToLower(response))
+		if response == "y" || response == "yes" {
+			colorText.PrintStyledLine(StyledChunk{"✅ Continuing with GoGoGadget", "success"})
+		} else {
+			colorText.PrintStyledLine(StyledChunk{"⚠️ Please review the information above", "warning"})
+		}
+	}
+}
+
+// ShowFirstRunMessage displays the first-run warning and asks for confirmation
+func ShowFirstRunMessage() {
+	PrintFirstRunWarning(true)
 }
 
 // NewFirstRunCommand creates a new cobra command to show the first-run message again
@@ -110,44 +129,8 @@ func NewFirstRunCommand() *cobra.Command {
 		Long: `Display the first-run warning message that appears when GoGoGadget is run for the first time.
 This command is useful if you want to review the warning message again.`,
 		Run: func(cmd *cobra.Command, args []string) {
-			// For the first-run command, we want to show the message but not exit automatically
-			// so we need a special version of the confirmation handling
-
-			// First show the warning message
-			// Define the warning message as a string literal
-			warningMsg := `*** ------------------------------- ***
-You are running GoGoGadget for the first time! This is exciting! You need to know a couple of things:
-
-`
-			fmt.Print(warningMsg)
-
-			// Show the first sentence of point 1 in bright red
-			fmt.Print("1. ")
-			fmt.Print("\x1b[1;91mGoGoGadget does NOT have any checks for your PowerShell commands.\x1b[0m")
-
-			// Define the rest of the message as a string literal
-			restOfMsg := ` It will run them as-is, with variables replaced exactly as you specify. Make sure you test your commands before saving them with GoGoGadget!
-2. Your gadgets are stored in a json file in the app directory (wherever you installed GoGoGadget). You can edit this file directly if you want without fear of breaking anything, but there are robust built in tools to edit the shortcuts as well. GUI is planned for a future release.
-
-Print this message again with 'GoGoGadget first-run' if you need to see it again.
-You can always run 'GoGoGadget help' for instructions on how to use the tool.
-*** ------------------------------- ***
-`
-			fmt.Print(restOfMsg)
-
-			// For this command, we get confirmation but don't exit
-			reader := bufio.NewReader(os.Stdin)
-			fmt.Print("Do you understand? (y/yes): ")
-			response, _ := reader.ReadString('\n')
-			response = strings.TrimSpace(strings.ToLower(response))
-
-			if response == "y" || response == "yes" {
-				colorText.Green("✅ Continuing with GoGoGadget")
-			} else {
-				colorText.Yellow("⚠️ Please review the information above")
-			}
+			PrintFirstRunWarning(false)
 		},
 	}
-
 	return cmd
 }

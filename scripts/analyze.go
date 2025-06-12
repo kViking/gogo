@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/alecthomas/chroma"
 	"github.com/alecthomas/chroma/lexers"
@@ -51,29 +52,28 @@ func Analyze(command ...string) error {
 		cmdStr = strings.Join(command, " ")
 	} else {
 		fmt.Fprintln(out)
-		fmt.Fprint(out, "Enter a PowerShell command to analyze (or use ")
-		colorText.Yellow("--command")
-		fmt.Fprintln(out, " for automation):")
-		colorText.Bold("> ")
+		colorText.PrintStyledLine(
+			StyledChunk{"Enter a PowerShell command to analyze (or use ", ""},
+			StyledChunk{"--command", "highlight"},
+			StyledChunk{" for automation):", ""},
+		)
+		colorText.PrintStyledLine(StyledChunk{"> ", "title"})
 		reader := bufio.NewReader(os.Stdin)
 		c, _ := reader.ReadString('\n')
 		cmdStr = strings.TrimSpace(c)
 	}
 
 	fmt.Fprintln(out)
-	spinner := NewSpinner("Analyzing command...")
-	spinner.Start()
+	RainbowSpinner("Analyzing command...", 1200*time.Millisecond)
 
 	lexer := lexers.Get("powershell")
 	if lexer == nil {
-		spinner.Stop()
-		colorText.Red("No syntax highlighter found for PowerShell. Aborting.")
+		colorText.Style("error", "No syntax highlighter found for PowerShell. Aborting.")
 		return fmt.Errorf("no lexer for PowerShell")
 	}
 	iterator, err := lexer.Tokenise(nil, cmdStr)
 	if err != nil {
-		spinner.Stop()
-		colorText.Red("Failed to tokenize command: " + err.Error())
+		colorText.Style("error", "Failed to tokenize command: "+err.Error())
 		return err
 	}
 
@@ -130,8 +130,6 @@ func Analyze(command ...string) error {
 	flushPathBuffer()
 
 	fmt.Fprintln(out)
-	spinner.Stop()
-	fmt.Fprintln(out)
 
 	paramStr := cmdStr
 	var suggestionReplacements []struct{ Original, Replacement string }
@@ -143,33 +141,40 @@ func Analyze(command ...string) error {
 		}
 	}
 
-	colorText.Green("\u2714 Analysis complete!")
-	fmt.Fprint(out, " ")
-	colorText.Bold("Original command:")
+	colorText.Style("success", "\u2714 Analysis complete!")
+	colorText.PrintStyledLine(
+		StyledChunk{" ", ""},
+		StyledChunk{"Original command:", "title"},
+	)
 	fmt.Fprintln(out, cmdStr)
 	if len(suggestionReplacements) > 0 {
 		fmt.Fprintln(out)
 	}
 	if len(suggestions) > 0 {
-		colorText.Cyan("Suggested parameterization:")
+		colorText.PrintStyledLine(StyledChunk{"Suggested parameterization:", "highlight"})
 		fmt.Fprintln(out, paramStr)
 		fmt.Fprintln(out)
-		colorText.Yellow("Variables detected:")
+		colorText.PrintStyledLine(StyledChunk{"Variables detected:", "warning"})
 		for _, s := range suggestions {
-			fmt.Fprint(out, "  ")
-			colorText.Magenta("%s", s.VarName)
-			fmt.Fprint(out, " (from ")
-			colorText.Cyan(s.Original)
-			fmt.Fprintln(out, ")")
+			colorText.PrintStyledLine(
+				StyledChunk{"  ", ""},
+				StyledChunk{s.VarName, "variable"},
+				StyledChunk{" (from ", ""},
+				StyledChunk{s.Original, "highlight"},
+				StyledChunk{")", ""},
+			)
 		}
 	} else {
-		colorText.Yellow("No variables or parameters detected. This command is ready to use as-is!")
+		colorText.Style("warning", "No variables or parameters detected. This command is ready to use as-is!")
 	}
 
 	fmt.Fprintln(out)
-	colorText.Cyan("To save this as a gadget, use:")
-	fmt.Fprint(out, "  ")
-	colorText.Bold("GoGoGadget add --command '<your command>' --scriptname <name> --desc <description>")
+	colorText.PrintStyledLine(
+		StyledChunk{"To save this as a gadget, use:", "info"},
+	)
+	colorText.PrintStyledLine(
+		StyledChunk{"  GoGoGadget add --command '<your command>' --scriptname <name> --desc <description>", "title"},
+	)
 	return nil
 }
 
