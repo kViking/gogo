@@ -4,6 +4,9 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/alecthomas/chroma"
+	"github.com/alecthomas/chroma/formatters"
+	"github.com/alecthomas/chroma/lexers"
 	"github.com/mattn/go-colorable"
 	"github.com/spf13/cobra"
 )
@@ -274,14 +277,38 @@ func NewPeekCommand() *cobra.Command {
 // printGadget pretty-prints all info about a gadget, with syntax highlighting for the command.
 func printGadget(name string, gadget Gadget) {
 	out := colorable.NewColorableStdout()
+
 	colorText.PrintStyledLine(
-		StyledChunk{"\nGadget Name:      ", "title"},
+		StyledChunk{"", ""},
+	)
+
+	colorText.PrintStyledLine(
+		StyledChunk{"\nGadget Name:", "title"},
+	)
+	colorText.PrintStyledLine(
+		StyledChunk{"  ", ""},
 		StyledChunk{name, "variable"},
 	)
+
+	colorText.PrintStyledLine(
+		StyledChunk{"", ""},
+	)
+
 	colorText.PrintStyledLine(StyledChunk{"Description:", "title"})
 	fmt.Fprintln(out, "  ", gadget.Description)
+
+	colorText.PrintStyledLine(
+		StyledChunk{"", ""},
+	)
+
 	colorText.PrintStyledLine(StyledChunk{"Command:", "title"})
-	fmt.Fprintln(out, "  "+highlightPowerShell(gadget.Command))
+	// Use analyze.go's syntax highlighting for PowerShell commands
+	fmt.Fprintln(out, "  "+HighlightPowerShellChroma(gadget.Command))
+
+	colorText.PrintStyledLine(
+		StyledChunk{"", ""},
+	)
+
 	if len(gadget.Variables) > 0 {
 		colorText.PrintStyledLine(StyledChunk{"Variables:", "title"})
 		for v, desc := range gadget.Variables {
@@ -302,11 +329,18 @@ func printGadget(name string, gadget Gadget) {
 	fmt.Fprintln(out)
 }
 
-// highlightPowerShell does basic syntax highlighting for PowerShell commands.
-func highlightPowerShell(cmd string) string {
-	keywords := []string{"Get-", "Set-", "Write-", "ForEach-", "If", "Else", "Function", "Param", "Return"}
-	for _, kw := range keywords {
-		cmd = strings.ReplaceAll(cmd, kw, "\x1b[1;34m"+kw+"\x1b[0m")
+// HighlightPowerShellChroma uses Chroma to syntax highlight PowerShell commands for the CLI.
+func HighlightPowerShellChroma(cmd string) string {
+	lexer := lexers.Get("powershell")
+	if lexer == nil {
+		return cmd
 	}
-	return cmd
+	iterator, err := lexer.Tokenise(nil, cmd)
+	if err != nil {
+		return cmd
+	}
+	var b strings.Builder
+	formatter := formatters.TTY16m
+	_ = formatter.Format(&b, chroma.MustNewStyle("swapoff", chroma.StyleEntries{}), iterator)
+	return b.String()
 }
