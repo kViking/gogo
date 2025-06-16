@@ -1,0 +1,5 @@
+<!-- Use this file to provide workspace-specific custom instructions to Copilot. For more details, visit https://code.visualstudio.com/docs/copilot/copilot-customization#_use-a-githubcopilotinstructionsmd-file -->
+
+This is a simple Rust CLI app. It will get more complicated as we build it out. It will store and run powershell snippets on a windows machine and bash snippets on a linux machine. It's essentially a user friendly wrapper for aliasing. It also handles variable injection for them.
+
+The app will be extended with a GUI later, but for now it's just a CLI app. The CLI app will be the backend for the GUI app, and needs to be well structured and modular to allow for easy integration later.

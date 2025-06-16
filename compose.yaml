@@ -1,0 +1,9 @@
+services:
+  gogo:
+    container_name: gogo
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - ./:/app
+    restart: no
