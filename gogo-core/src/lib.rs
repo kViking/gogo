@@ -1,3 +1,4 @@
+use regex::Regex;
 use serde::{Serialize, Deserialize};
 use std::fs::read_to_string;
 use std::collections::HashMap;
@@ -50,6 +51,33 @@ impl Gadget {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum GadgetAddError {
+    NoVariablesButDescriptions,
+    VariableCountMismatch { detected: Vec<String>, provided: Vec<String> },
+    InvalidVariableName { name: String },
+}
+
+impl std::fmt::Display for GadgetAddError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            GadgetAddError::NoVariablesButDescriptions => write!(f, "No variables found in command, but variable descriptions were provided."),
+            GadgetAddError::VariableCountMismatch { detected, provided } => write!(f, "Number of variable descriptions does not match number of variables in the command. Variables: {:?} Descriptions: {:?}", detected, provided),
+            GadgetAddError::InvalidVariableName { name } => write!(f, "Variable name '{}' contains invalid characters. Only alphanumeric characters, underscores, and dashes are allowed.", name),
+        }
+    }
+}
+
+impl std::error::Error for GadgetAddError {}
+
+/// Extracts variable names from a command string, e.g. "echo {{foo}}" -> ["foo"]
+pub fn extract_variables_from_command(command: &str) -> Vec<String> {
+    let re = Regex::new(r"\{\{(\w+)\}\}").unwrap();
+    re.captures_iter(command)
+        .map(|cap| cap[1].to_string())
+        .collect()
+}
+
 impl GadgetStore {
     pub fn new() -> Result<Self, Box<dyn Error>> {
         let gadget_file_path: String = file_path()?;
@@ -86,6 +114,41 @@ impl GadgetStore {
         self.0.remove(name);
         let serialized = serde_json::to_string_pretty(&self.0)?;
         std::fs::write(&gadget_file_path, serialized)?;
+        Ok(())
+    }
+
+    pub fn add(&mut self, mut gadget: Gadget) -> Result<(), GadgetAddError> {
+        let detected_vars = extract_variables_from_command(&gadget.command);
+        if detected_vars.is_empty() && !gadget.variables.is_empty() {
+            return Err(GadgetAddError::NoVariablesButDescriptions);
+        }
+        if !detected_vars.is_empty() && detected_vars.len() != gadget.variables.len() {
+            return Err(GadgetAddError::VariableCountMismatch {
+                detected: detected_vars.clone(),
+                provided: gadget.variables.iter().map(|v| v.name.clone()).collect(),
+            });
+        }
+        for var in &gadget.variables {
+            if !Regex::new(r"^[\w-]+$").unwrap().is_match(&var.name) {
+                return Err(GadgetAddError::InvalidVariableName { name: var.name.clone() });
+            }
+        }
+        let mut desc_map = std::collections::HashMap::new();
+        for v in &gadget.variables {
+            desc_map.insert(v.name.clone(), (v.description.clone(), v.default.clone()));
+        }
+        let mut new_vars = Vec::new();
+        for var_name in detected_vars {
+            let (description, default) = desc_map.remove(&var_name)
+                .unwrap_or((String::new(), None));
+            new_vars.push(GadgetVariable {
+                name: var_name,
+                description,
+                default,
+            });
+        }
+        gadget.variables = new_vars;
+        self.0.insert(gadget.name.clone(), gadget);
         Ok(())
     }
 }

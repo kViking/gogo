@@ -86,88 +86,28 @@ pub fn handle_add(
     vars: &[String],
     store: &mut GadgetStore,
 ) {
-    let var_names = extract_variable_names(command);
-    if !var_names.is_empty() && vars.len() != var_names.len() {
-        eprintln!("Error: Number of variable descriptions does not match number of variables in the command.\nVariables: {:?}\nDescriptions: {:?}", var_names, vars);
-        std::process::exit(1);
-    }
-    let mut new_gadget: Gadget = Gadget {
+    let new_gadget: Gadget = Gadget {
         name: add_name.to_string(),
         command: command.to_string(),
         description: description.to_string(),
-        variables: vec![],
-    };
-    for (var, desc) in var_names.into_iter().zip(vars.iter()) {
-        let gadget_var = GadgetVariable {
-            name: var,
+        variables: vars.iter().map(|desc| GadgetVariable {
+            name: String::new(),
             description: desc.clone(),
             default: None,
-        };
-        new_gadget.variables.push(gadget_var);
-    }
-    store.save_gadget(&new_gadget).unwrap_or_else(|err| {
-        eprintln!("Error adding gadget: {}", err);
-        std::process::exit(1);
-    });
-}
-
-pub fn handle_delete(delete_name: &str, store: &mut GadgetStore) {
-    store.delete_gadget(delete_name).unwrap_or_else(|err| {
-        eprintln!("Error deleting gadget: {}", err);
-        std::process::exit(1);
-    });
-}
-
-pub fn handle_list(store: &GadgetStore) {
-    for gadget in store.list_gadgets() {
-        gadget.pretty_print();
-    }
-}
-
-pub fn handle_run(name: &str, vars: &[String], store: &GadgetStore) {
-    if let Some(gadget) = store.get_gadget(name) {
-        let mut final_command = gadget.command.clone();
-        for var in &gadget.variables {
-            println!("Enter value for {} ({}): ", var.name, var.description);
-            let mut input = String::new();
-            std::io::stdin().read_line(&mut input).expect("Failed to read line");
-            let input = input.trim();
-            let value = if input.is_empty() {
-                match &var.default {
-                    Some(def) => def.clone(),
-                    None => {
-                        eprintln!("Error: No value provided for variable '{}' and no default is set.", var.name);
-                        std::process::exit(1);
-                    }
-                }
-            } else {
-                input.to_string()
-            };
-            final_command = final_command.replace(&format!("{{{{{}}}}}", var.name), &value);
-        }
-        let status = if cfg!(target_os = "windows") {
-            Command::new("cmd")
-                .args(&["/C", &final_command])
-                .status()
-                .expect("failed to execute process")
-        } else {
-            Command::new("sh")
-                .arg("-c")
-                .arg(&final_command)
-                .status()
-                .expect("failed to execute process")
-        };
-        if !status.success() {
-            eprintln!("Command executed with failing error code");
+        }).collect(),
+    };
+    match store.add(new_gadget) {
+        Ok(()) => {},
+        Err(e) => {
+            eprintln!("Error adding gadget: {}", e);
             std::process::exit(1);
         }
-    } else {
-        eprintln!("Error: Gadget '{}' not found.", name);
-        std::process::exit(1);
     }
 }
 
-pub fn handle_run_with_vars(gadget_name: &str, var_map: std::collections::HashMap<String, String>, store: &GadgetStore) {
+/// handle_run expects kwargs-style variable passing: --var value --var2 value
+/// The var_map argument is built from all unknown --key value pairs after the gadget name.
+pub fn handle_run(gadget_name: &str, var_map: std::collections::HashMap<String, String>, store: &GadgetStore) {
     if let Some(gadget) = store.get_gadget(gadget_name) {
         let mut final_command = gadget.command.clone();
         for var in &gadget.variables {
@@ -211,5 +151,18 @@ pub fn handle_run_with_vars(gadget_name: &str, var_map: std::collections::HashMa
     } else {
         eprintln!("Error: Gadget '{}' not found.", gadget_name);
         std::process::exit(1);
+    }
+}
+
+pub fn handle_delete(delete_name: &str, store: &mut GadgetStore) {
+    store.delete_gadget(delete_name).unwrap_or_else(|err| {
+        eprintln!("Error deleting gadget: {}", err);
+        std::process::exit(1);
+    });
+}
+
+pub fn handle_list(store: &GadgetStore) {
+    for gadget in store.list_gadgets() {
+        gadget.pretty_print();
     }
 }

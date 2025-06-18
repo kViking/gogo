@@ -1,0 +1,13 @@
+// Shared UI struct for gadgets, matching the Rust Gadget struct in gogo-core
+export struct GadgetVariable {
+    name: string,
+    description: string,
+    default: string,
+}
+
+export struct Gadget {
+    name: string,
+    command: string,
+    description: string,
+    variables: [GadgetVariable],
+}

@@ -1,0 +1,132 @@
+import { Gadget, GadgetVariable } from "./gadget.slint";
+import { VerticalBox, HorizontalBox, LineEdit, Button, ListView } from "std-widgets.slint";
+
+export struct EditableVariable {
+    name: string,
+    description: string,
+    default: string,
+    name_error: bool,
+    desc_error: bool,
+    default_error: bool,
+}
+// Reusable outlined text field component
+export component OutlinedTextField {
+    in-out property <string> text;
+    in property <color> border_color: #ccc;
+    in property <length> border_width: 2px;
+    in property <length> border_radius: 4px;
+    in property <string> placeholder: "";
+    in property <bool> enabled: true;
+    Rectangle {
+        border-width: root.border_width;
+        border-color: root.border_color;
+        border-radius: root.border_radius;
+        background: transparent;
+        LineEdit {
+            text <=> root.text;
+            placeholder-text: root.placeholder;
+            enabled: root.enabled;
+            width: 100%;
+            height: 100%;
+        }
+    }
+}
+
+export component GadgetEditor {
+    in property <Gadget> gadget;
+    in-out property <string> name: gadget.name;
+    in-out property <string> description: gadget.description;
+    in-out property <string> command: gadget.command;
+    in-out property <[EditableVariable]> variables: [];
+    in-out property <string> error_message: "";
+    in-out property <bool> show_confirmation: false;
+    callback save_gadget(
+        name: string, description: string, command: string, variables: [EditableVariable]
+    );
+    callback command_edited(text: string);
+
+    VerticalBox {
+        spacing: 8px;
+        Text { text: "Name:"; font-weight: 600; }
+        LineEdit { text <=> root.name; }
+        Text { text: "Description:"; font-weight: 600; }
+        LineEdit { text <=> root.description; }
+        Text { text: "Command:"; font-weight: 600; }
+        LineEdit {
+            text <=> root.command;
+            edited(text) => { root.command_edited(text); }
+        }
+        // Dynamic variable editors
+        if root.variables.length > 0 : VerticalBox {
+            spacing: 8px;
+            Text { text: "Variables:"; font-weight: 600; }
+            for variable[i] in root.variables : VerticalBox {
+                spacing: 4px;
+                property <string> local_name: variable.name;
+                property <string> local_desc: variable.description;
+                property <string> local_default: variable.default;
+                Rectangle {
+                    background: #f8f8f8;
+                    border-radius: 6px;
+                    border-width: 1px;
+                    border-color: #ddd;
+                    padding: 8px;
+                    VerticalBox {
+                        spacing: 4px;
+                        Text { text: local_name == "" ? "Variable" : local_name; font-weight: 700; padding-left: 4px; }
+                        Text { text: "Name:"; font-weight: 700; }
+                        OutlinedTextField {
+                            text <=> local_name;
+                            border_color: variable.name_error ? #e22 : #ccc;
+                            placeholder: "Variable name";
+                        }
+                        Text { text: "Description:"; font-weight: 700; }
+                        OutlinedTextField {
+                            text <=> local_desc;
+                            border_color: variable.desc_error ? #e22 : #ccc;
+                            placeholder: "Description";
+                        }
+                        Text { text: "Default:"; font-weight: 700; }
+                        OutlinedTextField {
+                            text <=> local_default;
+                            border_color: variable.default_error ? #e22 : #ccc;
+                            placeholder: "Default value";
+                        }
+                    }
+                }
+            }
+        }
+        if root.error_message != "" : Text {
+            text: root.error_message;
+            color: #e22;
+            font-weight: 700;
+            padding: 8px;
+        }
+        HorizontalBox {
+            spacing: 12px;
+            Button {
+                text: "Save";
+                clicked => {
+                    root.save_gadget(root.name, root.description, root.command, root.variables);
+                    root.show_confirmation = true;
+                }
+            }
+        }
+        if root.show_confirmation : Rectangle {
+            background: #fff;
+            border-radius: 8px;
+            border-width: 1px;
+            border-color: #bbb;
+            padding: 16px;
+            HorizontalBox {
+                spacing: 8px;
+                Text { text: "Gadget changes have been saved!"; color: #222; }
+                Button {
+                    text: "OK";
+                    clicked => { root.show_confirmation = false; }
+                }
+            }
+        }
+    }
+}
+

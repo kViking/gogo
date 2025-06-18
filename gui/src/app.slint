@@ -1,0 +1,86 @@
+import { ListView, VerticalBox, HorizontalBox, ScrollView } from "std-widgets.slint";
+import { Gadget, GadgetVariable } from "./gadget.slint";
+import { GadgetEditor, EditableVariable } from "./gadget_editor.slint";
+
+export component AppWindow inherits Window {
+    title: "GoGoGadget (Slint)";
+    width: 800px;
+    height: 400px;
+    in-out property <[Gadget]> gadgets;
+    in-out property <int> selected_index: -1;
+    in-out property <bool> var1_name_error: false;
+    in-out property <bool> var2_name_error: false;
+    in-out property <string> error_message: "";
+    in-out property <string> edit_name: "";
+    in-out property <string> edit_description: "";
+    in-out property <string> edit_command: "";
+    in-out property <[EditableVariable]> edit_variables: [];
+    callback save_gadget(
+        name: string, description: string, command: string, variables: [EditableVariable]
+    );
+    callback request_gadget_details(name: string);
+    HorizontalBox {
+        spacing: 0px;
+        // Left: All gadgets (gmail-style sidebar)
+        Rectangle {
+            min-width: 220px;
+            max-width: 260px;
+            background: #f0f0f0;
+            ScrollView {
+                VerticalBox {
+                    ListView {
+                        for gadget[i] in root.gadgets : TouchArea {
+                            Rectangle {
+                                background: root.selected_index == i ? #cce6ff : (root.selected_index == -1 ? #fff : #f0f0f0);
+                                border-radius: 4px;
+                                VerticalBox {
+                                    Text {
+                                        text: gadget.name;
+                                        font-weight: 700;
+                                        padding-left: 8px;
+                                        padding-top: 4px;
+                                        color: root.selected_index == i ? #222 : #888;
+                                    }
+                                    Text {
+                                        text: gadget.description;
+                                        font-size: 12px;
+                                        color: root.selected_index == i ? #444 : #aaa;
+                                        padding-left: 16px;
+                                        padding-bottom: 8px;
+                                    }
+                                }
+                            }
+                            clicked => { 
+                                root.selected_index = i;
+                                request_gadget_details(gadget.name);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        // Main content area
+        Rectangle {
+            background: #fff;
+            min-width: 0px;
+            ScrollView {
+                VerticalBox {
+                    if root.selected_index >= 0 : GadgetEditor {
+                        name <=> root.edit_name;
+                        description <=> root.edit_description;
+                        command <=> root.edit_command;
+                        variables <=> root.edit_variables;
+                        error_message <=> root.error_message;
+                        save_gadget(n, d, c, vars) => {
+                            root.save_gadget(n, d, c, vars);
+                        }
+                    }
+                    if root.selected_index < 0 : Text {
+                        text: "Select a gadget to see details.";
+                        padding: 16px;
+                    }
+                }
+            }
+        }
+    }
+}

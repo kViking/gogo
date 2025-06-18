@@ -1,0 +1,24 @@
+import { GadgetVariable } from "./gadget.slint";
+import { VerticalBox, LineEdit } from "std-widgets.slint";
+
+export component GadgetVariableEditor {
+    in-out property <string> name;
+    in-out property <string> description;
+    in-out property <string> default;
+    in property <int> index;
+    VerticalBox {
+        spacing: 4px;
+        padding-left: 12px;
+        Text { text: "Variable " + (index + 1) + ":"; font-weight: 700; }
+        VerticalBox {
+            spacing: 4px;
+            padding-left: 12px;
+            Text { text: "Name:"; font-weight: 700; }
+            LineEdit { text <=> root.name; }
+            Text { text: "Description:"; font-weight: 700; }
+            LineEdit { text <=> root.description; }
+            Text { text: "Default:"; font-weight: 700; }
+            LineEdit { text <=> root.default; }
+        }
+    }
+}
