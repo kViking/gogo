@@ -44,6 +44,7 @@ export component GadgetEditor {
         name: string, description: string, command: string, variables: [EditableVariable]
     );
     callback command_edited(text: string);
+    callback cancel_edit();
 
     VerticalBox {
         spacing: 8px;
@@ -109,6 +110,12 @@ export component GadgetEditor {
                 clicked => {
                     root.save_gadget(root.name, root.description, root.command, root.variables);
                     root.show_confirmation = true;
+                }
+            }
+            Button {
+                text: "Cancel";
+                clicked => {
+                    root.cancel_edit();
                 }
             }
         }

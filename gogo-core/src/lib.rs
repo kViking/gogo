@@ -93,6 +93,12 @@ impl GadgetStore {
         Ok(parsed)
     }
 
+    pub fn from_path(path: &str) -> Result<Self, Box<dyn std::error::Error>> {
+        let data: String = std::fs::read_to_string(path)?;
+        let parsed: GadgetStore = serde_json::from_str(&data)?;
+        Ok(parsed)
+    }
+
     pub fn get_gadget(&self, name: &str) -> Option<&Gadget> {
         self.0.get(name)
     }

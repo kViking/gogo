@@ -6,7 +6,6 @@ mod gadget_convert {
     use super::{CoreGadget, CoreGadgetVariable};
 
     pub fn to_slint_gadget(core: &CoreGadget) -> SlintGadget {
-        println!("[to_slint_gadget] name: {}, command: {}", core.name, core.command);
         SlintGadget {
             name: core.name.clone().into(),
             command: core.command.clone().into(),
@@ -21,7 +20,7 @@ mod gadget_convert {
         }
     }
 
-    pub fn from_slint_gadget(slint_gadget: &SlintGadget) -> CoreGadget {
+    pub fn _from_slint_gadget(slint_gadget: &SlintGadget) -> CoreGadget {
         CoreGadget {
             name: slint_gadget.name.to_string(),
             command: slint_gadget.command.to_string(),
@@ -41,79 +40,98 @@ use gogo_core::{Gadget as CoreGadget, GadgetVariable as CoreGadgetVariable, Gadg
 use gogo_core::GadgetAddError;
 use slint::Model;
 
+// Centralized application state
+struct AppState {
+    store: Rc<RefCell<GadgetStore>>,
+    gadgets: Vec<CoreGadget>,
+    selected_gadget: Option<CoreGadget>,
+    original_gadget: Option<CoreGadget>, // Added field for cancel support
+    edit_name: String,
+    edit_description: String,
+    edit_command: String,
+    edit_variables: Vec<EditableVariable>,
+    error_message: String,
+}
+
+impl AppState {
+    fn new(store: Rc<RefCell<GadgetStore>>) -> Self {
+        let gadgets = store.borrow().list_gadgets().into_iter().cloned().collect();
+        Self {
+            store,
+            gadgets,
+            selected_gadget: None,
+            original_gadget: None, // Initialize as None
+            edit_name: String::new(),
+            edit_description: String::new(),
+            edit_command: String::new(),
+            edit_variables: Vec::new(),
+            error_message: String::new(),
+        }
+    }
+
+    fn reload_gadgets(&mut self) {
+        self.gadgets = self.store.borrow().list_gadgets().into_iter().cloned().collect();
+    }
+
+    fn set_selected_gadget(&mut self, name: &str) {
+        self.selected_gadget = self.store.borrow().get_gadget(name).cloned();
+        self.original_gadget = self.selected_gadget.clone();
+        if let Some(gadget) = &self.selected_gadget {
+            self.original_gadget = Some(gadget.clone()); // Set original_gadget on select
+            self.edit_name = gadget.name.clone();
+            self.edit_description = gadget.description.clone();
+            self.edit_command = gadget.command.clone();
+            self.edit_variables = gadget.variables.iter().map(|v| EditableVariable {
+                name: v.name.clone().into(),
+                description: v.description.clone().into(),
+                default: v.default.clone().unwrap_or_default().into(),
+                name_error: false,
+                desc_error: false,
+                default_error: false,
+            }).collect();
+        } else {
+            self.edit_name.clear();
+            self.edit_description.clear();
+            self.edit_command.clear();
+            self.edit_variables.clear();
+        }
+    }
+
+    fn sync_to_ui(&self, app: &AppWindow) {
+        use slint::{ModelRc, VecModel};
+        app.set_gadgets(ModelRc::new(VecModel::from(self.gadgets.iter().map(|g| gadget_convert::to_slint_gadget(g)).collect::<Vec<_>>())));
+        app.set_edit_name(self.edit_name.clone().into());
+        app.set_edit_description(self.edit_description.clone().into());
+        app.set_edit_command(self.edit_command.clone().into());
+        app.set_edit_variables(ModelRc::new(VecModel::from(self.edit_variables.clone())));
+        app.set_error_message(self.error_message.clone().into());
+    }
+}
+
 fn main() {
     use slint::{ModelRc, VecModel};
-    use gadget_convert::{to_slint_gadget, from_slint_gadget};
+    use gadget_convert::{to_slint_gadget, _from_slint_gadget};
 
-    // Store dummy gadgets in a GadgetStore
-    let mut store = GadgetStore([
-        ("filecount".into(), CoreGadget {
-            name: "filecount".into(),
-            command: "ls {{dir}} | wc -l".into(),
-            description: "Count files in a directory.".into(),
-            variables: vec![CoreGadgetVariable {
-                name: "dir".into(),
-                description: "Directory to count files in".into(),
-                default: Some(".".into()),
-            }],
-        }),
-        ("greet".into(), CoreGadget {
-            name: "greet".into(),
-            command: "echo Hello, {{who}}!".into(),
-            description: "Greet someone by name.".into(),
-            variables: vec![CoreGadgetVariable {
-                name: "who".into(),
-                description: "Who to greet".into(),
-                default: Some("World".into()),
-            }],
-        }),
-        ("sayhi".into(), CoreGadget {
-            name: "sayhi".into(),
-            command: "echo Hi there!".into(),
-            description: "Say hi with no variables.".into(),
-            variables: vec![],
-        }),
-        ("date".into(), CoreGadget {
-            name: "date".into(),
-            command: "date".into(),
-            description: "Show the current date and time.".into(),
-            variables: vec![],
-        }),
-    ].into_iter().collect());
+    // Store gadgets from gadgets.json in the project root
+    let store = GadgetStore::from_path("gadgets.json").expect("Failed to load gadgets.json");
     let store = Rc::new(RefCell::new(store));
 
     let app = AppWindow::new().unwrap();
-
-    // Helper to reload gadgets from dummy GadgetStore, returns Vec of SlintGadget
-    let reload_gadgets = {
-        let store = store.clone();
-        let app_weak = app.as_weak();
-        move || {
-            let gadgets: Vec<_> = store.borrow().list_gadgets().iter().map(|g| to_slint_gadget(g)).collect();
-            println!("[reload_gadgets] All gadget commands:");
-            for g in &gadgets {
-                println!("  {}: {}", g.name, g.command);
-            }
-            if let Some(app) = app_weak.upgrade() {
-                app.set_gadgets(ModelRc::new(VecModel::from(gadgets.clone())));
-            }
-            gadgets
-        }
-    };
-
-    reload_gadgets();
-
-    // Save callback: update dummy GadgetStore and reload, then select by name
-    let store_save = store.clone();
-    let reload_gadgets_save = reload_gadgets.clone();
+    let app_state = Rc::new(RefCell::new(AppState::new(store.clone())));
     let app_weak = app.as_weak();
+    let app_state_save = app_state.clone();
+
+    // Initial sync to UI so gadgets are displayed
+    app_state.borrow().sync_to_ui(&app);
+
+    // Save callback
     app.on_save_gadget(move |
         name: slint::SharedString,
         description: slint::SharedString,
         command: slint::SharedString,
         variables: slint::ModelRc<EditableVariable>
     | {
-        use slint::{ModelRc, VecModel, SharedString};
+        let mut state = app_state_save.borrow_mut();
         // Convert ModelRc<EditableVariable> to Vec<EditableVariable>
         let variables_vec: Vec<EditableVariable> = (0..variables.row_count()).map(|i| variables.row_data(i).unwrap()).collect();
         let backend_vars: Vec<CoreGadgetVariable> = variables_vec.iter().map(|v| CoreGadgetVariable {
@@ -128,79 +146,89 @@ fn main() {
             variables: backend_vars,
         };
         let edited_name = edited.name.clone();
-        let add_result = store_save.borrow_mut().add(edited);
-        if let Some(app) = app_weak.upgrade() {
-            // Clear all error flags by default
-            let mut new_edit_vars = variables_vec.clone();
-            let mut error_message = SharedString::default();
-            if let Err(err) = add_result {
-                match err {
-                    GadgetAddError::InvalidVariableName { name: bad_name } => {
-                        for (i, v) in variables_vec.iter().enumerate() {
-                            if v.name == bad_name {
-                                new_edit_vars[i].name_error = true;
-                            }
+        let add_result = state.store.borrow_mut().add(edited);
+        // Clear all error flags by default
+        let mut new_edit_vars = variables_vec.clone();
+        let mut error_message = slint::SharedString::default();
+        if let Err(err) = add_result {
+            match err {
+                GadgetAddError::InvalidVariableName { name: bad_name } => {
+                    for (i, v) in variables_vec.iter().enumerate() {
+                        if v.name == bad_name {
+                            new_edit_vars[i].name_error = true;
                         }
-                        error_message = format!("Invalid variable name: {}", bad_name).into();
                     }
-                    GadgetAddError::VariableCountMismatch { .. } => {
-                        for var in new_edit_vars.iter_mut() {
-                            var.name_error = var.name.is_empty();
-                        }
-                        error_message = "Variable count mismatch".into();
-                    }
-                    GadgetAddError::NoVariablesButDescriptions => {
-                        error_message = "No variables found in command, but variable descriptions were provided.".into();
-                    }
+                    error_message = format!("Invalid variable name: {}", bad_name).into();
                 }
-                app.set_edit_variables(ModelRc::new(VecModel::from(new_edit_vars.clone())));
-                app.set_error_message(error_message);
-                return;
-            } else {
-                // Success: clear errors
-                for var in new_edit_vars.iter_mut() {
-                    var.name_error = false;
-                    var.desc_error = false;
-                    var.default_error = false;
+                GadgetAddError::VariableCountMismatch { .. } => {
+                    for var in new_edit_vars.iter_mut() {
+                        var.name_error = var.name.is_empty();
+                    }
+                    error_message = "Variable count mismatch".into();
                 }
-                app.set_error_message(SharedString::default());
-                app.set_edit_variables(ModelRc::new(VecModel::from(new_edit_vars.clone())));
+                GadgetAddError::NoVariablesButDescriptions => {
+                    error_message = "No variables found in command, but variable descriptions were provided.".into();
+                }
             }
-            let gadgets = reload_gadgets_save();
-            // Find index by name
-            let idx = gadgets.iter().position(|g| g.name == edited_name).map(|i| i as i32).unwrap_or(-1);
+            state.edit_variables = new_edit_vars.clone();
+            state.error_message = error_message.to_string();
+            if let Some(app) = app_weak.upgrade() {
+                state.sync_to_ui(&app);
+            }
+            return;
+        } else {
+            // Success: clear errors
+            for var in new_edit_vars.iter_mut() {
+                var.name_error = false;
+                var.desc_error = false;
+                var.default_error = false;
+            }
+            state.error_message.clear();
+            state.edit_variables = new_edit_vars.clone();
+        }
+        state.reload_gadgets();
+        // Find index by name
+        let idx = state.gadgets.iter().position(|g| g.name == edited_name).map(|i| i as i32).unwrap_or(-1);
+        if let Some(app) = app_weak.upgrade() {
+            state.sync_to_ui(&app);
             app.set_selected_index(-1); // Force rebind
             app.set_selected_index(idx);
         }
     });
 
     let app_weak = app.as_weak();
+    let app_state_details = app_state.clone();
     // Handle request_gadget_details from Slint
     app.on_request_gadget_details(move |name| {
-        use slint::{ModelRc, VecModel};
-        let gadget_opt = {
-            let store_ref = store.borrow();
-            store_ref.get_gadget(&name).cloned()
-        };
-        let app = app_weak.upgrade().unwrap();
-        if let Some(gadget) = gadget_opt {
-            let edit_vars = gadget.variables.iter().map(|v| EditableVariable {
+        let mut state = app_state_details.borrow_mut();
+        state.set_selected_gadget(&name);
+        if let Some(app) = app_weak.upgrade() {
+            state.sync_to_ui(&app);
+        }
+    });
+
+    // Cancel edit callback
+    let app_state_cancel = app_state.clone();
+    let app_weak_cancel = app.as_weak();
+    app.on_cancel_edit(move || {
+        let orig = app_state_cancel.borrow().original_gadget.clone();
+        if let Some(orig) = orig {
+            let mut state = app_state_cancel.borrow_mut();
+            state.edit_name = orig.name.clone();
+            state.edit_description = orig.description.clone();
+            state.edit_command = orig.command.clone();
+            state.edit_variables = orig.variables.iter().map(|v| EditableVariable {
                 name: v.name.clone().into(),
                 description: v.description.clone().into(),
                 default: v.default.clone().unwrap_or_default().into(),
                 name_error: false,
                 desc_error: false,
                 default_error: false,
-            }).collect::<Vec<_>>();
-            app.set_edit_name(gadget.name.clone().into());
-            app.set_edit_description(gadget.description.clone().into());
-            app.set_edit_command(gadget.command.clone().into());
-            app.set_edit_variables(ModelRc::new(VecModel::from(edit_vars)));
-        } else {
-            app.set_edit_name("".into());
-            app.set_edit_description("".into());
-            app.set_edit_command("".into());
-            app.set_edit_variables(ModelRc::new(VecModel::from(Vec::new())));
+            }).collect();
+            state.error_message.clear();
+            if let Some(app) = app_weak_cancel.upgrade() {
+                state.sync_to_ui(&app);
+            }
         }
     });
 
