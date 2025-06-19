@@ -17,6 +17,7 @@ export component OutlinedTextField {
     in property <length> border_radius: 4px;
     in property <string> placeholder: "";
     in property <bool> enabled: true;
+    callback edited(text: string);
     Rectangle {
         border-width: root.border_width;
         border-color: root.border_color;
@@ -28,6 +29,7 @@ export component OutlinedTextField {
             enabled: root.enabled;
             width: 100%;
             height: 100%;
+            edited(text) => { root.edited(text); }
         }
     }
 }
@@ -44,6 +46,7 @@ export component GadgetEditor {
         name: string, description: string, command: string, variables: [EditableVariable]
     );
     callback command_edited(text: string);
+    callback variable_name_edited(index: int, old_name: string, new_name: string);
     callback cancel_edit();
 
     VerticalBox {
@@ -80,6 +83,7 @@ export component GadgetEditor {
                             text <=> local_name;
                             border_color: variable.name_error ? #e22 : #ccc;
                             placeholder: "Variable name";
+                            edited(new_text) => { root.variable_name_edited(i, variable.name, new_text); }
                         }
                         Text { text: "Description:"; font-weight: 700; }
                         OutlinedTextField {

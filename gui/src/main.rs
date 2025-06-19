@@ -3,12 +3,12 @@ slint::include_modules!();
 mod gadget_convert {
     use slint::{ModelRc, VecModel, Model};
     use super::{Gadget as SlintGadget, GadgetVariable as SlintGadgetVariable};
-    use super::{CoreGadget, CoreGadgetVariable};
+    use super::{CoreGadget, CoreGadgetVariable, Command};
 
     pub fn to_slint_gadget(core: &CoreGadget) -> SlintGadget {
         SlintGadget {
             name: core.name.clone().into(),
-            command: core.command.clone().into(),
+            command: core.command.raw.clone().into(),
             description: core.description.clone().into(),
             variables: ModelRc::new(VecModel::from(
                 core.variables.iter().map(|v| SlintGadgetVariable {
@@ -23,7 +23,7 @@ mod gadget_convert {
     pub fn _from_slint_gadget(slint_gadget: &SlintGadget) -> CoreGadget {
         CoreGadget {
             name: slint_gadget.name.to_string(),
-            command: slint_gadget.command.to_string(),
+            command: Command::new(slint_gadget.command.to_string()),
             description: slint_gadget.description.to_string(),
             variables: slint_gadget.variables.iter().map(|v| CoreGadgetVariable {
                 name: v.name.to_string(),
@@ -36,9 +36,10 @@ mod gadget_convert {
 
 use std::rc::Rc;
 use std::cell::RefCell;
-use gogo_core::{Gadget as CoreGadget, GadgetVariable as CoreGadgetVariable, GadgetStore};
+use gogo_core::{Gadget as CoreGadget, GadgetVariable as CoreGadgetVariable, GadgetStore, Command};
 use gogo_core::GadgetAddError;
 use slint::Model;
+use std::collections::HashMap;
 
 // Centralized application state
 struct AppState {
@@ -77,10 +78,10 @@ impl AppState {
         self.selected_gadget = self.store.borrow().get_gadget(name).cloned();
         self.original_gadget = self.selected_gadget.clone();
         if let Some(gadget) = &self.selected_gadget {
-            self.original_gadget = Some(gadget.clone()); // Set original_gadget on select
+            self.original_gadget = Some(gadget.clone());
             self.edit_name = gadget.name.clone();
             self.edit_description = gadget.description.clone();
-            self.edit_command = gadget.command.clone();
+            self.edit_command = gadget.command.raw.clone();
             self.edit_variables = gadget.variables.iter().map(|v| EditableVariable {
                 name: v.name.clone().into(),
                 description: v.description.clone().into(),
@@ -106,6 +107,85 @@ impl AppState {
         app.set_edit_variables(ModelRc::new(VecModel::from(self.edit_variables.clone())));
         app.set_error_message(self.error_message.clone().into());
     }
+
+    /// Syncs variables from the old list to the new command, preserving metadata when possible.
+    fn sync_variables(
+        old_vars: &[EditableVariable],
+        old_parts: &[gogo_core::CommandPart],
+        new_parts: &[gogo_core::CommandPart],
+    ) -> Vec<EditableVariable> {
+        let old_text: Vec<_> = old_parts.iter().filter_map(|p| match p {
+            gogo_core::CommandPart::Text(t) => Some(t),
+            _ => None,
+        }).collect();
+        let new_text: Vec<_> = new_parts.iter().filter_map(|p| match p {
+            gogo_core::CommandPart::Text(t) => Some(t),
+            _ => None,
+        }).collect();
+        let new_var_names: Vec<_> = new_parts.iter().filter_map(|p| match p {
+            gogo_core::CommandPart::Variable(v) => Some(v.clone()),
+            _ => None,
+        }).collect();
+        let mut result = Vec::new();
+        let old_vars_map: HashMap<&str, &EditableVariable> = old_vars.iter().map(|v| (v.name.as_str(), v)).collect();
+        if old_text == new_text {
+            // Likely a rename or reorder: match by index
+            let old_var_names: Vec<_> = old_parts.iter().filter_map(|p| match p {
+                gogo_core::CommandPart::Variable(v) => Some(v),
+                _ => None,
+            }).collect();
+            for (i, name) in new_var_names.iter().enumerate() {
+                if let Some(old_name) = old_var_names.get(i) {
+                    if let Some(var) = old_vars_map.get(old_name.as_str()) {
+                        let mut new_var = (*var).clone();
+                        new_var.name = name.clone().into();
+                        result.push(new_var);
+                        continue;
+                    }
+                }
+                // fallback: new variable
+                result.push(EditableVariable {
+                    name: name.clone().into(),
+                    description: "".into(),
+                    default: "".into(),
+                    name_error: false,
+                    desc_error: false,
+                    default_error: false,
+                });
+            }
+        } else {
+            // Treat as new command: match by name if possible
+            for name in new_var_names {
+                if let Some(var) = old_vars_map.get(name.as_str()) {
+                    result.push((*var).clone());
+                } else {
+                    result.push(EditableVariable {
+                        name: name.clone().into(),
+                        description: "".into(),
+                        default: "".into(),
+                        name_error: false,
+                        desc_error: false,
+                        default_error: false,
+                    });
+                }
+            }
+        }
+        result
+    }
+}
+
+// Helper: update variable name in place and update command string
+fn update_variable_name_in_place(
+    edit_variables: &mut [EditableVariable],
+    index: usize,
+    old_name: &str,
+    new_name: &str,
+    command: &mut Command,
+) {
+    if let Some(var) = edit_variables.get_mut(index) {
+        var.name = new_name.into();
+    }
+    command.replace_variable_name(old_name, new_name);
 }
 
 fn main() {
@@ -142,7 +222,7 @@ fn main() {
         let edited = CoreGadget {
             name: name.to_string(),
             description: description.to_string(),
-            command: command.to_string(),
+            command: Command::new(command.to_string()),
             variables: backend_vars,
         };
         let edited_name = edited.name.clone();
@@ -216,7 +296,7 @@ fn main() {
             let mut state = app_state_cancel.borrow_mut();
             state.edit_name = orig.name.clone();
             state.edit_description = orig.description.clone();
-            state.edit_command = orig.command.clone();
+            state.edit_command = orig.command.raw.clone();
             state.edit_variables = orig.variables.iter().map(|v| EditableVariable {
                 name: v.name.clone().into(),
                 description: v.description.clone().into(),
@@ -229,6 +309,67 @@ fn main() {
             if let Some(app) = app_weak_cancel.upgrade() {
                 state.sync_to_ui(&app);
             }
+        }
+    });
+
+    // Add command_edited and variable_name_edited handlers
+    // (Assume Slint callback wiring is present)
+
+    // Command edited: update AppState with new Command and sync variables
+    let app_state_command = app_state.clone();
+    let app_weak_command = app.as_weak();
+    app.on_command_edited(move |new_command| {
+        let mut state = app_state_command.borrow_mut();
+        let old_cmd = Command::new(state.edit_command.clone());
+        let new_cmd = Command::new(new_command.to_string());
+        state.edit_command = new_cmd.raw.clone();
+        // Extract variable names from old and new command
+        let old_var_names: Vec<_> = old_cmd.parts.iter().filter_map(|p| match p {
+            gogo_core::CommandPart::Variable(v) => Some(v),
+            _ => None,
+        }).collect();
+        let new_var_names: Vec<_> = new_cmd.parts.iter().filter_map(|p| match p {
+            gogo_core::CommandPart::Variable(v) => Some(v),
+            _ => None,
+        }).collect();
+        // If variable count and text parts are the same, mutate in place
+        let old_text: Vec<_> = old_cmd.parts.iter().filter_map(|p| match p {
+            gogo_core::CommandPart::Text(t) => Some(t),
+            _ => None,
+        }).collect();
+        let new_text: Vec<_> = new_cmd.parts.iter().filter_map(|p| match p {
+            gogo_core::CommandPart::Text(t) => Some(t),
+            _ => None,
+        }).collect();
+        if old_var_names.len() == new_var_names.len() && old_text == new_text {
+            for (i, name) in new_var_names.iter().enumerate() {
+                if let Some(var) = state.edit_variables.get_mut(i) {
+                    var.name = name.clone().into();
+                }
+            }
+        } else {
+            // Otherwise, rebuild the array using sync_variables logic
+            state.edit_variables = AppState::sync_variables(
+                &state.edit_variables,
+                &old_cmd.parts,
+                &new_cmd.parts,
+            );
+        }
+        if let Some(app) = app_weak_command.upgrade() {
+            state.sync_to_ui(&app);
+        }
+    });
+
+    // Variable name edited: update command string using replace_variable_name
+    let app_state_varname = app_state.clone();
+    let app_weak_varname = app.as_weak();
+    app.on_variable_name_edited(move |index, old_name, new_name| {
+        let mut state = app_state_varname.borrow_mut();
+        let mut cmd = Command::new(state.edit_command.clone());
+        update_variable_name_in_place(&mut state.edit_variables, index as usize, &old_name, &new_name, &mut cmd);
+        state.edit_command = cmd.raw.clone();
+        if let Some(app) = app_weak_varname.upgrade() {
+            state.sync_to_ui(&app);
         }
     });
 

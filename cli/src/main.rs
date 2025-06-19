@@ -1,7 +1,7 @@
 mod commands;
 
 use clap::{Parser, Subcommand};
-use gogo_core::GadgetStore;
+use gogo_core::{Gadget, GadgetVariable, Command, GadgetStore};
 use std::collections::HashMap;
 
 #[derive(Parser, Debug)]

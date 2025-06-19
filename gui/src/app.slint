@@ -20,6 +20,8 @@ export component AppWindow inherits Window {
     );
     callback request_gadget_details(name: string);
     callback cancel_edit();
+    callback command_edited(text: string);
+    callback variable_name_edited(index: int, old_name: string, new_name: string);
     HorizontalBox {
         spacing: 0px;
         // Left: All gadgets (gmail-style sidebar)
@@ -77,6 +79,12 @@ export component AppWindow inherits Window {
                         }
                         cancel_edit() => {
                             root.cancel_edit();
+                        }
+                        command_edited(text) => {
+                            root.command_edited(text);
+                        }
+                        variable_name_edited(i, old, new) => {
+                            root.variable_name_edited(i, old, new);
                         }
                     }
                     if root.selected_index < 0 : Text {

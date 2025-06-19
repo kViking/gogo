@@ -1,7 +1,7 @@
 {
   "greet": {
     "name": "greet",
-    "command": "echo Hello, {{who}}!",
+    "command": { "raw": "echo Hello, {{who}}!" },
     "description": "Greet someone by name.",
     "variables": [
       { "name": "who", "description": "Who to greet", "default": "World" }
@@ -9,7 +9,7 @@
   },
   "filecount": {
     "name": "filecount",
-    "command": "ls {{dir}} | wc -l",
+    "command": { "raw": "ls {{dir}} | wc -l" },
     "description": "Count files in a directory.",
     "variables": [
       { "name": "dir", "description": "Directory to count files in", "default": "." }
@@ -17,19 +17,19 @@
   },
   "sayhi": {
     "name": "sayhi",
-    "command": "echo Hi there!",
+    "command": { "raw": "echo Hi there!" },
     "description": "Say hi with no variables.",
     "variables": []
   },
   "date": {
     "name": "date",
-    "command": "date",
+    "command": { "raw": "date" },
     "description": "Show the current date and time.",
     "variables": []
   },
   "remind": {
     "name": "remind",
-    "command": "echo Reminder: {{message}} at {{time}}",
+    "command": { "raw": "echo Reminder: {{message}} at {{time}}" },
     "description": "Set a reminder message.",
     "variables": [
       { "name": "message", "description": "Reminder message", "default": "Meeting" },

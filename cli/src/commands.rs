@@ -1,15 +1,7 @@
 // Handles CLI command logic for gogo
 
-use gogo_core::{Gadget, GadgetStore, GadgetVariable};
-use std::process::Command;
-use regex;
-
-fn extract_variable_names(command: &str) -> Vec<String> {
-    let re = regex::Regex::new(r"\{\{(\w+)\}\}").unwrap();
-    re.captures_iter(command)
-        .map(|cap| cap[1].to_string())
-        .collect()
-}
+use gogo_core::{Gadget, GadgetVariable, Command, GadgetStore};
+use std::process::Command as StdCommand;
 
 pub fn handle_info(store: &GadgetStore, info_name: &str) {
     if let Some(gadget) = store.get_gadget(info_name) {
@@ -54,7 +46,7 @@ pub fn handle_edit(
                 }
             }
             if let Some(new_command) = new_command {
-                gadget.command = new_command.to_string();
+                gadget.command = Command::new(new_command.to_string());
                 changed = true;
             }
             if let Some(new_desc) = new_desc {
@@ -88,7 +80,7 @@ pub fn handle_add(
 ) {
     let new_gadget: Gadget = Gadget {
         name: add_name.to_string(),
-        command: command.to_string(),
+        command: Command::new(command.to_string()),
         description: description.to_string(),
         variables: vars.iter().map(|desc| GadgetVariable {
             name: String::new(),
@@ -109,7 +101,7 @@ pub fn handle_add(
 /// The var_map argument is built from all unknown --key value pairs after the gadget name.
 pub fn handle_run(gadget_name: &str, var_map: std::collections::HashMap<String, String>, store: &GadgetStore) {
     if let Some(gadget) = store.get_gadget(gadget_name) {
-        let mut final_command = gadget.command.clone();
+        let mut final_command = gadget.command.raw.clone();
         for var in &gadget.variables {
             let value = var_map.get(&var.name).cloned().or_else(|| {
                 // Prompt if not provided
@@ -133,12 +125,12 @@ pub fn handle_run(gadget_name: &str, var_map: std::collections::HashMap<String, 
             final_command = final_command.replace(&format!("{{{{{}}}}}", var.name), &value);
         }
         let status = if cfg!(target_os = "windows") {
-            Command::new("cmd")
+            StdCommand::new("cmd")
                 .args(&["/C", &final_command])
                 .status()
                 .expect("failed to execute process")
         } else {
-            Command::new("sh")
+            StdCommand::new("sh")
                 .arg("-c")
                 .arg(&final_command)
                 .status()

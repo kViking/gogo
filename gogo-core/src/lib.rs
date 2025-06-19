@@ -5,6 +5,83 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::path::Path;
 
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub enum CommandPart {
+    Text(String),
+    Variable(String),
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct Command {
+    pub raw: String,
+    #[serde(skip)]
+    pub parts: Vec<CommandPart>,
+}
+
+impl Command {
+    pub fn new(raw: String) -> Self {
+        let parts = Self::parse_parts(&raw);
+        Self { raw, parts }
+    }
+
+    pub fn parse_parts(raw: &str) -> Vec<CommandPart> {
+        let re = Regex::new(r"\{\{(\w+)\}\}").unwrap();
+        let mut parts = Vec::new();
+        let mut last = 0;
+        for cap in re.captures_iter(raw) {
+            let m = cap.get(0).unwrap();
+            if m.start() > last {
+                parts.push(CommandPart::Text(raw[last..m.start()].to_string()));
+            }
+            parts.push(CommandPart::Variable(cap[1].to_string()));
+            last = m.end();
+        }
+        if last < raw.len() {
+            parts.push(CommandPart::Text(raw[last..].to_string()));
+        }
+        parts
+    }
+
+    /// Extracts variable names from the command string, e.g. "echo {{foo}}" -> ["foo"]
+    pub fn extract_variables(&self) -> Vec<String> {
+        self.parts.iter().filter_map(|p| {
+            if let CommandPart::Variable(v) = p { Some(v.clone()) } else { None }
+        }).collect()
+    }
+
+    /// Replace a variable name in the command string (all occurrences)
+    pub fn replace_variable_name(&mut self, old: &str, new: &str) {
+        self.raw = self.raw.replace(&format!("{{{{{}}}}}", old), &format!("{{{{{}}}}}", new));
+        self.parts = Self::parse_parts(&self.raw);
+    }
+
+    /// Build the final command by injecting variable values
+    pub fn build_final_command(&self, values: &HashMap<String, String>) -> String {
+        let mut result = String::new();
+        for part in &self.parts {
+            match part {
+                CommandPart::Text(t) => result.push_str(t),
+                CommandPart::Variable(v) => result.push_str(values.get(v).map(|s| s.as_str()).unwrap_or("")),
+            }
+        }
+        result
+    }
+
+    /// Returns the command string with variable slots as {{name}} (template preview)
+    pub fn current(&self) -> String {
+        let mut result = String::new();
+        for part in &self.parts {
+            match part {
+                CommandPart::Text(t) => result.push_str(t),
+                CommandPart::Variable(v) => {
+                    result.push_str(&format!("{{{{{}}}}}", v));
+                }
+            }
+        }
+        result
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct GadgetVariable {
     pub name: String,
@@ -15,7 +92,7 @@ pub struct GadgetVariable {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Gadget {
     pub name: String,
-    pub command: String,
+    pub command: Command,
     pub description: String,
     pub variables: Vec<GadgetVariable>,
 }
@@ -36,7 +113,7 @@ impl Gadget {
     pub fn pretty_print(&self) {
         println!("Name: {}", self.name);
         println!("Description: {}", self.description);
-        println!("Command: {}", self.command);
+        println!("Command: {}", self.command.raw);
         if !self.variables.is_empty() {
             println!("Variables:");
             for var in &self.variables {
@@ -72,10 +149,7 @@ impl std::error::Error for GadgetAddError {}
 
 /// Extracts variable names from a command string, e.g. "echo {{foo}}" -> ["foo"]
 pub fn extract_variables_from_command(command: &str) -> Vec<String> {
-    let re = Regex::new(r"\{\{(\w+)\}\}").unwrap();
-    re.captures_iter(command)
-        .map(|cap| cap[1].to_string())
-        .collect()
+    Command::new(command.to_string()).extract_variables()
 }
 
 impl GadgetStore {
@@ -124,7 +198,7 @@ impl GadgetStore {
     }
 
     pub fn add(&mut self, mut gadget: Gadget) -> Result<(), GadgetAddError> {
-        let detected_vars = extract_variables_from_command(&gadget.command);
+        let detected_vars = gadget.command.extract_variables();
         if detected_vars.is_empty() && !gadget.variables.is_empty() {
             return Err(GadgetAddError::NoVariablesButDescriptions);
         }
